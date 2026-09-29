@@ -64,8 +64,13 @@ export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.unread = 0;
 
   // Better Auth's own routes and public photos don't need the session lookup.
-  if (!path.startsWith("/api/auth/") && !path.startsWith("/photos/")) {
-    const data = await getAuth().api.getSession({ headers: request.headers });
+  if (!path.startsWith("/api/auth/") && !path.startsWith("/photos/") && path !== "/api/health") {
+    // If auth can't start (for example BETTER_AUTH_SECRET is not set yet),
+    // treat the visitor as signed out rather than failing every page.
+    const data = await (async () => getAuth().api.getSession({ headers: request.headers }))().catch((err) => {
+      console.error("[auth] session lookup failed", err);
+      return null;
+    });
     if (data) {
       context.locals.user = data.user;
       context.locals.session = data.session;

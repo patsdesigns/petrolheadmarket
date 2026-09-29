@@ -1,7 +1,12 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 
-// Deploy check: confirms the D1 and R2 bindings are wired up.
+// Deploy check: storage bindings work and which settings are still missing.
+// Only reports setting names, never values.
+const REQUIRED = ["BETTER_AUTH_SECRET", "PUBLIC_SITE_URL", "ADMIN_EMAILS"] as const;
+const FOR_EMAIL = ["RESEND_API_KEY", "EMAIL_FROM"] as const;
+const FOR_PUBLISHING = ["WEBFLOW_API_TOKEN", "WEBFLOW_SITE_ID", "WEBFLOW_COLLECTION_ID"] as const;
+
 export const GET: APIRoute = async () => {
   const checks: Record<string, "ok" | "missing" | "error"> = {};
 
@@ -19,8 +24,15 @@ export const GET: APIRoute = async () => {
     checks.photos = env.PHOTOS ? "error" : "missing";
   }
 
-  const ok = Object.values(checks).every((v) => v === "ok");
-  return new Response(JSON.stringify({ ok, checks }), {
+  const missing = (keys: readonly string[]) => keys.filter((k) => !env[k as keyof typeof env]);
+  const settings = {
+    missingRequired: missing(REQUIRED),
+    missingForEmail: missing(FOR_EMAIL),
+    missingForPublishing: missing(FOR_PUBLISHING),
+  };
+
+  const ok = Object.values(checks).every((v) => v === "ok") && settings.missingRequired.length === 0;
+  return new Response(JSON.stringify({ ok, checks, settings }, null, 2), {
     status: ok ? 200 : 503,
     headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
   });

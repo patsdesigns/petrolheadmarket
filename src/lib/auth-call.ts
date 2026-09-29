@@ -35,13 +35,27 @@ export async function callAuth<T = unknown>(
     if (value) headers.set(name, value);
   }
 
-  const res = await getAuth().handler(
-    new Request(new URL(url(`/api/auth${path}`), origin), {
-      method,
-      headers,
-      body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
-    }),
-  );
+  let res: Response;
+  try {
+    res = await getAuth().handler(
+      new Request(new URL(url(`/api/auth${path}`), origin), {
+        method,
+        headers,
+        body: method === "POST" ? JSON.stringify(body ?? {}) : undefined,
+      }),
+    );
+  } catch (err) {
+    // Usually a missing setting such as BETTER_AUTH_SECRET. See /app/api/health.
+    console.error("[auth] handler failed", err);
+    return {
+      ok: false,
+      status: 503,
+      data: null,
+      error: "Accounts are not switched on yet. Please try again soon.",
+      code: "AUTH_UNAVAILABLE",
+      cookies: [],
+    };
+  }
 
   let json: any = null;
   try {
