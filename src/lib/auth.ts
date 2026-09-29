@@ -5,7 +5,7 @@ import { getDb } from "../db/client";
 import * as schema from "../db/schema";
 import { sendEmail } from "./email";
 import { ensureProfile } from "./profile";
-import { publicOrigin } from "./config";
+import { IP_HEADERS, publicOrigin } from "./config";
 import { url } from "./paths";
 
 function createAuth() {
@@ -75,7 +75,7 @@ function createAuth() {
     advanced: {
       cookiePrefix: "phm",
       // Rate limits are keyed by client IP. Webflow Cloud runs on Cloudflare.
-      ipAddress: { ipAddressHeaders: ["cf-connecting-ip", "x-forwarded-for"] },
+      ipAddress: { ipAddressHeaders: IP_HEADERS },
       useSecureCookies: origin.startsWith("https://"),
       defaultCookieAttributes: { httpOnly: true, sameSite: "lax" },
     },

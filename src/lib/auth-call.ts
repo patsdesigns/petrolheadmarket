@@ -1,5 +1,5 @@
 import { getAuth } from "./auth";
-import { publicOrigin } from "./config";
+import { IP_HEADERS, publicOrigin } from "./config";
 import { url } from "./paths";
 
 export interface AuthCallResult<T = unknown> {
@@ -13,7 +13,7 @@ export interface AuthCallResult<T = unknown> {
   cookies: string[];
 }
 
-const FORWARDED = ["cookie", "user-agent", "x-forwarded-for", "cf-connecting-ip", "x-real-ip"];
+const FORWARDED = ["cookie", "user-agent", ...IP_HEADERS];
 
 /**
  * Call a Better Auth endpoint from a server-rendered form handler.
