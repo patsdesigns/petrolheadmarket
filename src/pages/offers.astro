@@ -1,0 +1,303 @@
+---
+import { z } from "zod";
+import Base from "../layouts/Base.astro";
+import Notice from "../components/Notice.astro";
+import StatusBadge from "../components/StatusBadge.astro";
+import { url, siteUrl } from "../lib/paths";
+import { formatPrice, listingTitle } from "../lib/listing-rules";
+import {
+  acceptOffer,
+  contactFor,
+  counterOffer,
+  declineOffer,
+  offersForUser,
+  withdrawOffer,
+  type OfferThread,
+} from "../lib/offers";
+
+const user = Astro.locals.user!;
+let actionError = "";
+let counterFor = "";
+let counterError = "";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const offerId = String(form.get("offerId") ?? "").slice(0, 64);
+  let result: { ok: boolean; error?: string } = { ok: false, error: "Unknown action." };
+
+  if (intent === "accept") result = await acceptOffer(offerId, user.id);
+  else if (intent === "decline") result = await declineOffer(offerId, user.id);
+  else if (intent === "withdraw") result = await withdrawOffer(offerId, user.id);
+  else if (intent === "counter") {
+    const parsed = z
+      .object({
+        amount: z.string().trim().transform((v) => Number(v.replace(/[$,\s]/g, ""))).pipe(z.number().int().positive()),
+        message: z.string().trim().max(1000).optional(),
+      })
+      .safeParse({ amount: form.get("amount") ?? "", message: form.get("message") ?? undefined });
+    if (!parsed.success) {
+      counterFor = offerId;
+      counterError = "Enter your counter offer in whole dollars.";
+      result = { ok: true };
+    } else {
+      result = await counterOffer(offerId, user.id, parsed.data.amount, parsed.data.message || null);
+      if (!result.ok) {
+        counterFor = offerId;
+        counterError = result.error ?? "";
+        result = { ok: true };
+      }
+    }
+  }
+  if (result.ok && !counterFor) return Astro.redirect(`${url("/offers")}?done=${intent}`, 303);
+  if (!result.ok) actionError = result.error ?? "Something went wrong.";
+}
+
+const all = await offersForUser(user.id);
+const received = all.filter((t) => t.role === "seller");
+const sent = all.filter((t) => t.role === "buyer");
+
+// Contact details only for accepted deals.
+const contacts = new Map<string, { name: string; email: string; phone: string | null }>();
+for (const t of all) {
+  if (t.latest.status !== "accepted") continue;
+  const otherId = t.role === "buyer" ? t.listing.userId : t.buyerId;
+  const c = await contactFor(otherId);
+  contacts.set(t.key, {
+    name: c.displayName,
+    email: c.email,
+    phone: t.role === "buyer" && t.listing.contactMethod === "messages_phone" ? t.listing.contactPhone : null,
+  });
+}
+const names = new Map<string, string>();
+for (const t of received) if (!names.has(t.buyerId)) names.set(t.buyerId, (await contactFor(t.buyerId)).displayName);
+
+const done = Astro.url.searchParams.get("done");
+const doneText: Record<string, string> = {
+  accept: "Offer accepted. You both have each other's contact details below and by email.",
+  decline: "Offer declined.",
+  withdraw: "Offer withdrawn.",
+  counter: "Counter offer sent.",
+};
+
+const statusText = (t: OfferThread) => {
+  const o = t.latest;
+  const who = o.madeBy === "buyer" ? (t.role === "buyer" ? "Your offer" : "Their offer") : t.role === "seller" ? "Your counter" : "Seller's counter";
+  const label: Record<string, string> = {
+    pending: "waiting for a response",
+    countered: "countered",
+    accepted: "accepted",
+    declined: "declined",
+    expired: "expired",
+    withdrawn: "withdrawn",
+  };
+  return `${who} of ${formatPrice(o.amount)}, ${label[o.status]}`;
+};
+const hoursLeft = (d: Date) => Math.max(0, Math.round((d.getTime() - Date.now()) / 3_600_000));
+const waitingOnMe = (t: OfferThread) =>
+  t.latest.status === "pending" &&
+  ((t.role === "seller" && t.latest.madeBy === "buyer") || (t.role === "buyer" && t.latest.madeBy === "seller"));
+---
+
+<Base title="Offers">
+  <h1 class="page-title">Offers</h1>
+  {Astro.url.searchParams.get("sent") && <Notice tone="ok"><p>Offer sent. We will email you when the seller responds.</p></Notice>}
+  {done && doneText[done] && <Notice tone="ok"><p>{doneText[done]}</p></Notice>}
+  {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
+
+  {
+    [
+      { title: "Offers on your cars", list: received, empty: "No offers yet. When buyers make offers on your cars, they show up here." },
+      { title: "Offers you made", list: sent, empty: "You have not made any offers. Find a car you like on the site and tap Make an offer." },
+    ]
+      // Sections with offers in them come first.
+      .sort((x, y) => Number(y.list.length > 0) - Number(x.list.length > 0))
+      .map((section) => (
+      <section class="section">
+        <h2 class="label">{section.title}</h2>
+        {section.list.length === 0 ? (
+          <p class="muted">{section.empty}</p>
+        ) : (
+          <ul class="offers">
+            {section.list.map((t) => (
+              <li class:list={["card", "offer", { "is-waiting": waitingOnMe(t) }]}>
+                <div class="offer__head">
+                  <a class="offer__car" href={t.listing.slug ? siteUrl(`/listings/${t.listing.slug}`) : url(`/listings/${t.listing.id}`)}>
+                    {listingTitle(t.listing)}
+                  </a>
+                  <StatusBadge status={t.listing.status} />
+                </div>
+                <p class="offer__meta">
+                  Asking {formatPrice(t.listing.price)}
+                  {t.role === "seller" && <> · Buyer: {names.get(t.buyerId)}</>}
+                </p>
+                <p class="offer__status">
+                  <strong>{statusText(t)}</strong>
+                  {t.latest.status === "pending" && <span class="muted"> · {hoursLeft(t.latest.expiresAt)}h left</span>}
+                </p>
+                {t.latest.message && <p class="offer__note">"{t.latest.message}"</p>}
+
+                {t.history.length > 1 && (
+                  <details class="offer__hist">
+                    <summary>History</summary>
+                    <ol>
+                      {t.history.map((o) => (
+                        <li>
+                          {o.madeBy === "buyer" ? "Buyer" : "Seller"} offered {formatPrice(o.amount)} ({o.status})
+                        </li>
+                      ))}
+                    </ol>
+                  </details>
+                )}
+
+                {contacts.has(t.key) && (
+                  <div class="contact">
+                    <p class="label">Contact {t.role === "buyer" ? "the seller" : "the buyer"}</p>
+                    <p>
+                      <strong>{contacts.get(t.key)!.name}</strong><br />
+                      <a href={`mailto:${contacts.get(t.key)!.email}`}>{contacts.get(t.key)!.email}</a>
+                      {contacts.get(t.key)!.phone && (<><br /><a href={`tel:${contacts.get(t.key)!.phone}`}>{contacts.get(t.key)!.phone}</a></>)}
+                    </p>
+                    <p class="muted small">See the car and the title in person before you pay. Never wire money to someone you have not met.</p>
+                  </div>
+                )}
+
+                {waitingOnMe(t) && (
+                  <div class="actions">
+                    <form method="post">
+                      <input type="hidden" name="offerId" value={t.latest.id} />
+                      <button class="btn" type="submit" name="intent" value="accept">Accept offer</button>
+                    </form>
+                    <form method="post">
+                      <input type="hidden" name="offerId" value={t.latest.id} />
+                      <button class="btn btn--secondary" type="submit" name="intent" value="decline">Decline</button>
+                    </form>
+                    {t.role === "seller" && (
+                      <details class="counter" open={counterFor === t.latest.id}>
+                        <summary class="btn btn--secondary">Counter</summary>
+                        <form method="post" class="counter__form" novalidate>
+                          <input type="hidden" name="offerId" value={t.latest.id} />
+                          <input type="hidden" name="intent" value="counter" />
+                          <div class="field">
+                            <label for={`c-${t.latest.id}`}>Your counter offer</label>
+                            <input id={`c-${t.latest.id}`} name="amount" inputmode="numeric" maxlength="12" aria-invalid={counterFor === t.latest.id ? "true" : undefined} />
+                            {counterFor === t.latest.id && <span class="error">{counterError}</span>}
+                          </div>
+                          <div class="field">
+                            <label for={`cm-${t.latest.id}`}>Note (optional)</label>
+                            <textarea id={`cm-${t.latest.id}`} name="message" rows="2" maxlength="1000"></textarea>
+                          </div>
+                          <button class="btn" type="submit">Send counter offer</button>
+                        </form>
+                      </details>
+                    )}
+                  </div>
+                )}
+                {t.role === "buyer" && t.latest.status === "pending" && t.latest.madeBy === "buyer" && (
+                  <form method="post" class="actions">
+                    <input type="hidden" name="offerId" value={t.latest.id} />
+                    <button class="btn btn--secondary" type="submit" name="intent" value="withdraw">Withdraw offer</button>
+                  </form>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    ))
+  }
+</Base>
+
+<style>
+  .section {
+    margin-bottom: 32px;
+    max-width: 760px;
+  }
+  .offers {
+    list-style: none;
+    padding: 0;
+    margin: 10px 0 0;
+    display: grid;
+    gap: 12px;
+  }
+  .offer.is-waiting {
+    border-color: var(--red);
+    box-shadow: inset 4px 0 0 var(--red);
+  }
+  .offer__head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .offer__car {
+    font-weight: 900;
+    font-size: 18px;
+    color: var(--ink);
+  }
+  .offer__meta {
+    margin: 4px 0;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .offer__status {
+    margin: 8px 0 4px;
+  }
+  .offer__note {
+    margin: 4px 0;
+    font-style: italic;
+    white-space: pre-wrap;
+  }
+  .offer__hist summary {
+    cursor: pointer;
+    color: var(--muted);
+    min-height: var(--tap);
+    display: flex;
+    align-items: center;
+  }
+  .offer__hist ol {
+    margin: 0 0 8px;
+    padding-left: 20px;
+    font-size: 14px;
+  }
+  .contact {
+    margin-top: 12px;
+    padding: 12px 14px;
+    border-radius: var(--radius-btn);
+    background: var(--ok-bg);
+    border: 1px solid var(--ok-line);
+  }
+  .contact p {
+    margin: 4px 0;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 14px;
+    align-items: flex-start;
+  }
+  .actions form {
+    margin: 0;
+  }
+  .counter {
+    flex-basis: 100%;
+  }
+  .counter summary {
+    list-style: none;
+    display: inline-flex;
+  }
+  .counter summary::-webkit-details-marker {
+    display: none;
+  }
+  .counter__form {
+    margin-top: 12px;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .small {
+    font-size: 13px;
+  }
+</style>

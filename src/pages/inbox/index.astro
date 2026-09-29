@@ -1,0 +1,110 @@
+---
+import Base from "../../layouts/Base.astro";
+import { url } from "../../lib/paths";
+import { inboxFor } from "../../lib/messaging";
+
+const user = Astro.locals.user!;
+const rows = await inboxFor(user.id);
+const when = (d: Date) => {
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  if (mins < 60 * 24) return `${Math.floor(mins / 60)}h`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" });
+};
+---
+
+<Base title="Inbox">
+  <h1 class="page-title">Inbox</h1>
+  {
+    rows.length === 0 ? (
+      <div class="card empty">
+        <p>No messages yet.</p>
+        <p class="muted">When you message a seller, or a buyer messages you about your car, the conversation shows up here.</p>
+      </div>
+    ) : (
+      <ul class="threads">
+        {rows.map((r) => (
+          <li>
+            <a class:list={["card", "thread", { "is-unread": r.unread > 0 }]} href={url(`/inbox/${r.id}`)}>
+              <span class="thread__top">
+                <strong>{r.otherName}</strong>
+                <span class="label">{when(r.lastMessageAt)}</span>
+              </span>
+              <span class="thread__car">
+                {r.role === "seller" ? "Buyer for your " : ""}{r.listingTitle}
+              </span>
+              <span class="thread__preview">{r.preview}</span>
+              {r.unread > 0 && <span class="thread__badge" aria-label={`${r.unread} unread`}>{r.unread}</span>}
+            </a>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+</Base>
+
+<style>
+  .threads {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 8px;
+    max-width: 760px;
+  }
+  .thread {
+    position: relative;
+    display: grid;
+    gap: 2px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: inherit;
+  }
+  .thread.is-unread {
+    border-color: var(--ink);
+  }
+  .thread.is-unread .thread__preview {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .thread__top {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding-right: 32px;
+  }
+  .thread__car {
+    font-size: 14px;
+  }
+  .thread__preview {
+    color: var(--muted);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .thread__badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--red);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    display: grid;
+    place-items: center;
+  }
+  .empty {
+    max-width: 560px;
+  }
+  .empty p {
+    margin: 0 0 6px;
+  }
+  .muted {
+    color: var(--muted);
+  }
+</style>

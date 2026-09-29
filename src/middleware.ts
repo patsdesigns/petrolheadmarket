@@ -4,6 +4,7 @@ import { ensureProfile } from "./lib/profile";
 import { publicOrigin } from "./lib/config";
 import { basePath, url } from "./lib/paths";
 import { safeNext } from "./lib/forms";
+import { unreadCount } from "./lib/messaging";
 
 // Paths (relative to /app) anyone can open without signing in.
 const PUBLIC_PREFIXES = [
@@ -60,6 +61,7 @@ export const onRequest = defineMiddleware(async (context, next) => {
   context.locals.user = null;
   context.locals.session = null;
   context.locals.profile = null;
+  context.locals.unread = 0;
 
   // Better Auth's own routes and public photos don't need the session lookup.
   if (!path.startsWith("/api/auth/") && !path.startsWith("/photos/")) {
@@ -68,6 +70,8 @@ export const onRequest = defineMiddleware(async (context, next) => {
       context.locals.user = data.user;
       context.locals.session = data.session;
       context.locals.profile = await ensureProfile(data.user);
+      // Header badge; API calls don't render the header.
+      if (!path.startsWith("/api/")) context.locals.unread = await unreadCount(data.user.id);
     }
   }
 

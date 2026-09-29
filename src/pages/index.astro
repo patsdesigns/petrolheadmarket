@@ -6,10 +6,13 @@ import { url } from "../lib/paths";
 import { listForUser } from "../lib/listings";
 import { formatMiles, formatPrice, listingTitle } from "../lib/listing-rules";
 import { isEditable } from "../lib/listings";
+import { offersNeedingResponse } from "../lib/offers";
 
 const user = Astro.locals.user!;
 const mine = await listForUser(user.id);
 const notice = Astro.url.searchParams.get("notice");
+const needResponse = await offersNeedingResponse(user.id);
+const unread = Astro.locals.unread;
 ---
 
 <Base title="My garage">
@@ -26,6 +29,25 @@ const notice = Astro.url.searchParams.get("notice");
           <a href={url("/verify-email")}>Confirm your email</a> to submit listings, make offers and message sellers.
         </p>
       </Notice>
+    )
+  }
+
+  {
+    (needResponse > 0 || unread > 0) && (
+      <div class="todo">
+        {needResponse > 0 && (
+          <a class="card todo__item" href={url("/offers")}>
+            <span class="todo__n">{needResponse}</span>
+            <span>{needResponse === 1 ? "Offer needs" : "Offers need"} your response</span>
+          </a>
+        )}
+        {unread > 0 && (
+          <a class="card todo__item" href={url("/inbox")}>
+            <span class="todo__n">{unread}</span>
+            <span>Unread {unread === 1 ? "message" : "messages"}</span>
+          </a>
+        )}
+      </div>
     )
   }
 
@@ -78,6 +100,32 @@ const notice = Astro.url.searchParams.get("notice");
   }
   .head h1 {
     margin: 0;
+  }
+  .todo {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .todo__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 700;
+    border-color: var(--red);
+  }
+  .todo__n {
+    display: grid;
+    place-items: center;
+    min-width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    background: var(--red);
+    color: #fff;
+    font-family: var(--font-mono);
   }
   .empty {
     display: grid;

@@ -1,0 +1,117 @@
+---
+import { z } from "zod";
+import Base from "../layouts/Base.astro";
+import Field from "../components/Field.astro";
+import Notice from "../components/Notice.astro";
+import CarSummary from "../components/CarSummary.astro";
+import { url } from "../lib/paths";
+import { parseForm } from "../lib/forms";
+import { getPublicListing } from "../lib/public-listing";
+import { createOffer, expireStaleOffers, minOffer, openOfferFor, OFFER_HOURS } from "../lib/offers";
+import { offerRateLimited } from "../lib/rate-limit";
+import { formatPrice } from "../lib/listing-rules";
+
+const user = Astro.locals.user!;
+const slug = Astro.url.searchParams.get("listing");
+const found = await getPublicListing(slug);
+if (!found) return Astro.rewrite(url("/404"));
+const { listing } = found;
+const selfUrl = `${url("/offer")}?listing=${encodeURIComponent(slug!)}`;
+
+let errors: Record<string, string> = {};
+let values: Record<string, string> = {};
+let formError = "";
+
+const isOwn = listing.userId === user.id;
+await expireStaleOffers();
+const open = await openOfferFor(listing.id, user.id);
+const closed = listing.status !== "live" || !listing.acceptsOffers;
+
+if (Astro.request.method === "POST" && !isOwn && !closed) {
+  const parsed = await parseForm(
+    Astro.request,
+    z.object({
+      amount: z
+        .string()
+        .trim()
+        .transform((v) => Number(v.replace(/[$,\s]/g, "")))
+        .pipe(z.number({ message: "Enter an amount in dollars." }).int("Use whole dollars.").min(1, "Enter an amount in dollars.").max(100_000_000)),
+      message: z.string().trim().max(1000, "Keep your note under 1,000 characters.").optional(),
+    }),
+  );
+  values = parsed.values;
+  if (!parsed.ok) errors = parsed.errors;
+  else if (!user.emailVerified) formError = "Confirm your email before you make an offer.";
+  else if (await offerRateLimited(user.id)) formError = "You have made a lot of offers in the last hour. Try again later.";
+  else {
+    const result = await createOffer(listing, user.id, parsed.data.amount, parsed.data.message || null);
+    if (result.ok) return Astro.redirect(`${url("/offers")}?sent=1`, 303);
+    formError = result.error;
+  }
+}
+---
+
+<Base title="Make an offer">
+  <p class="label"><a href={url("/offers")}>Offers</a></p>
+  <h1 class="page-title">Make an offer</h1>
+  <CarSummary {...found} />
+
+  {
+    isOwn ? (
+      <Notice tone="info"><p>This is your car. Offers from buyers show up in <a href={url("/offers")}>Offers</a>.</p></Notice>
+    ) : closed ? (
+      <Notice tone="info">
+        <p>
+          {listing.status === "live"
+            ? "The seller is not taking offers on this car. You can still message them."
+            : "This car is no longer taking offers."}
+        </p>
+        {listing.status === "live" && <p><a href={`${url("/message")}?listing=${encodeURIComponent(slug!)}`}>Message the seller</a></p>}
+      </Notice>
+    ) : open ? (
+      <Notice tone="info">
+        <p>
+          You have an open {open.madeBy === "seller" ? "counter offer from the seller" : "offer"} of {formatPrice(open.amount)} on this car.
+          {" "}<a href={url("/offers")}>See it in Offers</a>.
+        </p>
+      </Notice>
+    ) : (
+      <div class="card offer">
+        {!user.emailVerified && (
+          <Notice tone="info">
+            <p><a href={`${url("/verify-email")}?next=${encodeURIComponent(selfUrl)}`}>Confirm your email</a> to make an offer.</p>
+          </Notice>
+        )}
+        {formError && <Notice tone="error"><p>{formError}</p></Notice>}
+        <form method="post" novalidate>
+          <Field name="amount" label="Your offer" inputmode="numeric" value={values.amount} error={errors.amount} maxlength={12}
+            hint={`Whole dollars. At least ${formatPrice(minOffer(listing.price!))}, half the asking price.`} />
+          <div class="field">
+            <label for="f-message">Note to the seller</label>
+            <span class="hint" id="f-message-hint">Optional. Say when you could see the car or how you would pay.</span>
+            <textarea id="f-message" name="message" rows="4" maxlength="1000" aria-describedby="f-message-hint">{values.message ?? ""}</textarea>
+            {errors.message && <span class="error">{errors.message}</span>}
+          </div>
+          <p class="muted">
+            The seller has {OFFER_HOURS} hours to accept, counter or decline. If they accept, you both get each other's contact
+            details to arrange an inspection and payment.
+          </p>
+          <button class="btn" type="submit" disabled={!user.emailVerified}>Send offer</button>
+        </form>
+      </div>
+    )
+  }
+</Base>
+
+<style>
+  .label a {
+    color: var(--muted);
+  }
+  .offer {
+    max-width: 560px;
+  }
+  .muted {
+    color: var(--muted);
+    font-size: 14px;
+  }
+</style>

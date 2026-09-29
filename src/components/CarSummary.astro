@@ -1,0 +1,55 @@
+---
+import { formatMiles, formatPrice, listingTitle } from "../lib/listing-rules";
+import { siteUrl } from "../lib/paths";
+import type { Listing } from "../db/schema";
+
+interface Props {
+  listing: Listing;
+  mainPhoto: string | null;
+  sellerName: string;
+}
+const { listing, mainPhoto, sellerName } = Astro.props;
+const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
+---
+
+<a class="car-sum card" href={listing.slug ? siteUrl(`/listings/${listing.slug}`) : undefined}>
+  {mainPhoto ? <img src={mainPhoto} alt="" /> : <span class="car-sum__ph"></span>}
+  <span class="car-sum__body">
+    <strong>{listingTitle(listing)}</strong>
+    <span class="price">Asking {formatPrice(listing.price)}</span>
+    <span class="car-sum__meta">{[listing.mileage !== null ? `${formatMiles(listing.mileage)} mi` : "", location, `Seller: ${sellerName}`].filter(Boolean).join(" · ")}</span>
+  </span>
+</a>
+
+<style>
+  .car-sum {
+    display: grid;
+    grid-template-columns: 120px 1fr;
+    gap: 14px;
+    align-items: center;
+    padding: 10px;
+    text-decoration: none;
+    color: inherit;
+    margin-bottom: 20px;
+  }
+  .car-sum img,
+  .car-sum__ph {
+    width: 120px;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 8px;
+    background: var(--paper);
+  }
+  .car-sum__body {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+  }
+  .car-sum strong {
+    font-size: 18px;
+  }
+  .car-sum__meta {
+    color: var(--muted);
+    font-size: 14px;
+  }
+</style>

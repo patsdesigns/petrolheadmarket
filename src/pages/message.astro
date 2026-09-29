@@ -1,0 +1,65 @@
+---
+import Base from "../layouts/Base.astro";
+import Notice from "../components/Notice.astro";
+import CarSummary from "../components/CarSummary.astro";
+import SafetyNote from "../components/SafetyNote.astro";
+import { url } from "../lib/paths";
+import { getPublicListing } from "../lib/public-listing";
+import { getThreadFor, sendMessage, MAX_MESSAGE } from "../lib/messaging";
+
+const user = Astro.locals.user!;
+const slug = Astro.url.searchParams.get("listing");
+const found = await getPublicListing(slug);
+if (!found) return Astro.rewrite(url("/404"));
+const { listing } = found;
+const selfUrl = `${url("/message")}?listing=${encodeURIComponent(slug!)}`;
+
+// Sellers see their conversations in the inbox.
+if (listing.userId === user.id) return Astro.redirect(url("/inbox"), 303);
+
+// One thread per listing per buyer: if it exists, continue there.
+const existing = await getThreadFor(listing.id, user.id);
+if (existing && Astro.request.method !== "POST") return Astro.redirect(url(`/inbox/${existing.id}`), 303);
+
+let error = "";
+let body = "";
+if (Astro.request.method === "POST") {
+  body = String((await Astro.request.formData()).get("body") ?? "").slice(0, MAX_MESSAGE + 1);
+  if (!user.emailVerified) error = "Confirm your email before you message a seller.";
+  else {
+    const result = await sendMessage({ senderId: user.id, body, listing });
+    if (result.ok) return Astro.redirect(url(`/inbox/${result.threadId}`), 303);
+    error = result.error;
+  }
+}
+---
+
+<Base title="Message the seller">
+  <p class="label"><a href={url("/inbox")}>Inbox</a></p>
+  <h1 class="page-title">Message the seller</h1>
+  <CarSummary {...found} />
+  <div class="card compose">
+    <SafetyNote />
+    {!user.emailVerified && (
+      <Notice tone="info"><p><a href={`${url("/verify-email")}?next=${encodeURIComponent(selfUrl)}`}>Confirm your email</a> to message sellers.</p></Notice>
+    )}
+    {error && <Notice tone="error"><p>{error}</p></Notice>}
+    <form method="post">
+      <div class="field">
+        <label for="f-body">Your message to {found.sellerName}</label>
+        <span class="hint" id="f-body-hint">Ask about the car, its history, or when you could see it. Your email stays private.</span>
+        <textarea id="f-body" name="body" rows="6" maxlength={MAX_MESSAGE} required aria-describedby="f-body-hint">{body}</textarea>
+      </div>
+      <button class="btn" type="submit" disabled={!user.emailVerified}>Send message</button>
+    </form>
+  </div>
+</Base>
+
+<style>
+  .label a {
+    color: var(--muted);
+  }
+  .compose {
+    max-width: 640px;
+  }
+</style>

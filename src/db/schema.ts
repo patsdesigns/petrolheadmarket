@@ -1,7 +1,7 @@
 // Drizzle schema for the D1 database (binding DB).
 // After changing this file run `npm run db:generate` and commit ./drizzle.
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
 import { user } from "./auth-schema";
 
 // Better Auth's own tables (user, session, account, verification, rate_limit).
@@ -143,3 +143,85 @@ export const auditLog = sqliteTable(
 );
 
 export type AuditEntry = typeof auditLog.$inferSelect;
+
+export const OFFER_STATUSES = ["pending", "countered", "accepted", "declined", "expired", "withdrawn"] as const;
+export type OfferStatus = (typeof OFFER_STATUSES)[number];
+
+// A buyer's offer is a row made by "buyer". A seller's counter is a new row
+// made by "seller" whose parent is the offer it answers (which becomes "countered").
+export const offers = sqliteTable(
+  "offers",
+  {
+    id: text("id").primaryKey(),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    buyerId: text("buyer_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    madeBy: text("made_by", { enum: ["buyer", "seller"] }).notNull().default("buyer"),
+    amount: integer("amount").notNull(),
+    message: text("message"),
+    status: text("status", { enum: OFFER_STATUSES }).notNull().default("pending"),
+    parentOfferId: text("parent_offer_id"),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    respondedAt: integer("responded_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [
+    index("offers_listing_idx").on(t.listingId, t.status),
+    index("offers_buyer_idx").on(t.buyerId, t.createdAt),
+  ],
+);
+
+export type Offer = typeof offers.$inferSelect;
+
+export const threads = sqliteTable(
+  "threads",
+  {
+    id: text("id").primaryKey(),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    buyerId: text("buyer_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    sellerId: text("seller_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    lastMessageAt: integer("last_message_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [
+    uniqueIndex("threads_listing_buyer_uq").on(t.listingId, t.buyerId),
+    index("threads_buyer_idx").on(t.buyerId, t.lastMessageAt),
+    index("threads_seller_idx").on(t.sellerId, t.lastMessageAt),
+  ],
+);
+
+export type Thread = typeof threads.$inferSelect;
+
+export const messages = sqliteTable(
+  "messages",
+  {
+    id: text("id").primaryKey(),
+    threadId: text("thread_id")
+      .notNull()
+      .references(() => threads.id, { onDelete: "cascade" }),
+    senderId: text("sender_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    body: text("body").notNull(),
+    flagged: integer("flagged", { mode: "boolean" }).notNull().default(false),
+    flagReason: text("flag_reason"),
+    flagReviewedAt: integer("flag_reviewed_at", { mode: "timestamp_ms" }),
+    readAt: integer("read_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [
+    index("messages_thread_idx").on(t.threadId, t.createdAt),
+    index("messages_sender_idx").on(t.senderId, t.createdAt),
+    index("messages_flagged_idx").on(t.flagged, t.flagReviewedAt),
+  ],
+);
+
+export type Message = typeof messages.$inferSelect;

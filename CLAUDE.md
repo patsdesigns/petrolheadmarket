@@ -74,6 +74,17 @@ Key points:
 - Every admin action and CMS publish or sync (and failures, with the error) goes to `audit_log`, shown as History on the review screen.
 - `WEBFLOW_API_BASE` exists only to point tests at a fake API. Never set it in Webflow Cloud.
 
+## Buying (decided in phase 5)
+
+- `/app/offer` and `/app/message` look the listing up by its CMS slug, and only for live, offer accepted or sold listings.
+- Offers (`src/lib/offers.ts`): a counter is a new row with `made_by = seller` and `parent_offer_id` pointing at the buyer's offer, which becomes `countered`. Sellers counter buyer offers, buyers accept or decline counters, buyers can withdraw their own open offer. A counter must be above the buyer's offer and at most the asking price. Offers over double the asking price are refused as a typo guard.
+- Expiry has no cron: pending offers past `expires_at` are marked `expired` whenever offers are read.
+- Accepting claims the listing with a conditional update (`live` to `offer_accepted`) so two accepts can't both win, declines every other open offer with an email, syncs the CMS, and emails both sides each other's contact details. The seller's phone is shared only when the listing uses Messages and phone. Contact details are also shown on `/app/offers` for accepted deals.
+- Rate limits: 10 offers per buyer per hour, 30 messages per user per 10 minutes.
+- Messages: the thread page is a React island that polls every 15 seconds while visible. Only the first unread message in a burst sends an email. Emails never include addresses. Admins can open any thread read only (from the flags page).
+- Scam filter (`scamCheck` in `src/lib/messaging.ts`) flags wire transfers, Western Union or MoneyGram, gift cards, shipping agents, escrow, crypto, WhatsApp or Telegram, "text me at", email addresses, phone numbers and outside links. Flagged messages are still delivered.
+- Email notification setting (`profiles.email_notifications`) covers new offers, counters, declines and messages. Accepted deal emails always go out.
+
 ## Environment variables
 
 | Name | Secret | Purpose |

@@ -23,5 +23,7 @@ declare namespace App {
     user: import("./lib/auth").SessionData["user"] | null;
     session: import("./lib/auth").SessionData["session"] | null;
     profile: import("./db/schema").Profile | null;
+    /** Unread messages, for the header badge. */
+    unread: number;
   }
 }
