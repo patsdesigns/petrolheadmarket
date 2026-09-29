@@ -49,8 +49,16 @@ function sameOrigin(request: Request): boolean {
   return false;
 }
 
+let loggedHeaderNames = false;
+
 export const onRequest = defineMiddleware(async (context, next) => {
   const { request } = context;
+  // Once per worker: record which header names arrive (names only, never
+  // values) so we can see which one carries the visitor IP on Webflow Cloud.
+  if (!loggedHeaderNames) {
+    loggedHeaderNames = true;
+    console.log("[headers] names:", [...request.headers.keys()].sort().join(", "));
+  }
   const path = appPath(context.url.pathname);
   const isMutation = !["GET", "HEAD", "OPTIONS"].includes(request.method);
 
