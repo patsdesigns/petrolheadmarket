@@ -52,6 +52,18 @@ Key points:
 - The admin role is synced from `ADMIN_EMAILS` on every sign in (added or removed).
 - Without `RESEND_API_KEY`, emails are printed to the console so local flows still work.
 
+## Selling (decided in phase 3)
+
+- Listing rules live in `src/lib/listing-rules.ts`: per field Zod rules for draft saves, the five wizard steps, and `checklist()`, which the wizard shows and the server enforces on submit. Options and their Webflow option IDs are in `src/lib/listing-options.ts`.
+- Drafts save leniently: valid fields are saved even when others have errors, so autosave never loses work. Required fields are only enforced at submit.
+- Autosave is a small inline script on the wizard page (not a React island). It posts the step form with `X-Autosave: 1`.
+- `/app/sell` shows open drafts and creates a new draft on "Start a new listing" (max 10 open drafts). The wizard is `/app/listings/:id/edit?step=car|history|photos|price|review`.
+- A seller can move a submitted listing back to draft, and delete drafts (photos are removed from R2 too).
+- Title is stored as `title_status` (clean, rebuilt, salvage, lien, none) plus `title_state`, and becomes `CLEAN - CA` for the CMS. Location is `location_city` plus `location_state`.
+- Photo API: `POST /app/api/listings/:id/photos` (raw JPEG body, `?w=&h=`), `PUT` the same path with `{ order: [ids] }`, `DELETE /app/api/listings/:id/photos/:photoId`. Only while the listing is a draft or has changes requested.
+- Workers report the date as 1970 while a module loads. Never compute dates (like the current year) at module scope.
+- When a listing is submitted, everyone in `ADMIN_EMAILS` gets an email.
+
 ## Environment variables
 
 | Name | Secret | Purpose |

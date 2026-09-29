@@ -1,0 +1,126 @@
+---
+import Base from "../layouts/Base.astro";
+import Notice from "../components/Notice.astro";
+import { url } from "../lib/paths";
+import { createDraft, listForUser, MAX_OPEN_DRAFTS } from "../lib/listings";
+import { listingTitle } from "../lib/listing-rules";
+import { MIN_PHOTOS, MIN_DESCRIPTION } from "../lib/listing-options";
+
+const user = Astro.locals.user!;
+let error = "";
+
+if (Astro.request.method === "POST") {
+  const id = await createDraft(user.id);
+  if (id) return Astro.redirect(`${url(`/listings/${id}/edit`)}?step=car`, 303);
+  error = `You have ${MAX_OPEN_DRAFTS} drafts open. Finish or delete one before starting another.`;
+}
+
+const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" || l.status === "changes_requested");
+---
+
+<Base title="Sell your car">
+  <h1 class="page-title">Sell your car</h1>
+  <p class="lede">
+    Listing is free. A real person reviews every car before it goes live, so buyers know they are looking at an honest
+    listing. It takes about 20 minutes, and your progress saves as you go.
+  </p>
+
+  {error && <Notice tone="error"><p>{error}</p></Notice>}
+
+  {
+    drafts.length > 0 && (
+      <section class="card drafts" aria-labelledby="drafts-h">
+        <h2 id="drafts-h">Pick up where you left off</h2>
+        <ul>
+          {drafts.map((d) => (
+            <li class="spec-row">
+              <span>{listingTitle(d)}</span>
+              <a href={`${url(`/listings/${d.id}/edit`)}`}>Continue</a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  <div class="sell-grid">
+    <section class="card" aria-labelledby="need-h">
+      <h2 id="need-h">What you will need</h2>
+      <ul class="needs">
+        <li><strong>At least {MIN_PHOTOS} photos.</strong> Outside, inside, engine bay, underside and any flaws.</li>
+        <li><strong>The VIN</strong> for cars from 1981 on.</li>
+        <li><strong>The mileage and title status.</strong></li>
+        <li><strong>The story.</strong> At least {MIN_DESCRIPTION} characters on how you have owned and cared for it.</li>
+        <li><strong>Honest known issues.</strong> Every used car has some.</li>
+      </ul>
+    </section>
+    <section class="card" aria-labelledby="how-h">
+      <h2 id="how-h">How it works</h2>
+      <ol class="how">
+        <li>Describe the car and add photos.</li>
+        <li>Set your price and choose how buyers reach you.</li>
+        <li>Submit for review. We check it, usually within a day.</li>
+        <li>It goes live on Petrol Head Market. Buyers message you or make offers.</li>
+      </ol>
+      {
+        !user.emailVerified && (
+          <p class="muted">
+            You can start now. You will need to <a href={url("/verify-email")}>confirm your email</a> before you submit.
+          </p>
+        )
+      }
+      <form method="post">
+        <button class="btn" type="submit">Start a new listing</button>
+      </form>
+    </section>
+  </div>
+</Base>
+
+<style>
+  h2 {
+    font-size: 22px;
+  }
+  .drafts {
+    margin-bottom: 20px;
+    max-width: 760px;
+  }
+  .drafts ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+  }
+  .drafts .spec-row > :first-child {
+    font-family: inherit;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 16px;
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .drafts a {
+    font-weight: 700;
+  }
+  .sell-grid {
+    display: grid;
+    gap: 20px;
+    max-width: 760px;
+  }
+  @media (min-width: 800px) {
+    .sell-grid {
+      grid-template-columns: 1fr 1fr;
+      max-width: none;
+    }
+  }
+  .needs,
+  .how {
+    padding-left: 20px;
+    margin: 0 0 18px;
+  }
+  .needs li,
+  .how li {
+    margin: 8px 0;
+  }
+  .muted {
+    color: var(--muted);
+  }
+</style>

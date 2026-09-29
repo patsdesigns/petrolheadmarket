@@ -144,12 +144,18 @@ h3 {
 /* Spec rows */
 .spec-row {
   display: flex;
+  align-items: baseline;
   justify-content: space-between;
   gap: 16px;
   padding: 10px 0;
   border-bottom: 1px dashed var(--line);
 }
+.spec-row > :last-child {
+  text-align: right;
+}
 .spec-row > :first-child {
+  flex: none;
+  white-space: nowrap;
   font-family: var(--font-mono);
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -261,4 +267,60 @@ h3 {
 }
 .field [aria-invalid="true"] {
   border-color: var(--red);
+}
+
+/* Checkbox and radio rows */
+.check-field {
+  margin-bottom: 18px;
+}
+.check-field__label,
+.radio {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: var(--tap);
+  padding-top: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.check-field__label input,
+.radio input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin: 0;
+  accent-color: var(--red);
+}
+.check-field .hint {
+  display: block;
+  margin-left: 32px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.radio small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+}
+fieldset {
+  border: 0;
+  padding: 0;
+  margin: 0 0 18px;
+}
+legend {
+  font-weight: 700;
+  margin-bottom: 4px;
+  padding: 0;
+}
+.field-row {
+  display: grid;
+  gap: 0 16px;
+}
+@media (min-width: 640px) {
+  .field-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .field-row--3 {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
 }

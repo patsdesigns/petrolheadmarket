@@ -1,0 +1,204 @@
+---
+import { and, eq } from "drizzle-orm";
+import Base from "../../../layouts/Base.astro";
+import Notice from "../../../components/Notice.astro";
+import StatusBadge from "../../../components/StatusBadge.astro";
+import { getDb } from "../../../db/client";
+import { listings } from "../../../db/schema";
+import { url, siteUrl } from "../../../lib/paths";
+import { BODY_STYLES, DRIVETRAINS, TITLE_STATUSES, TRANSMISSIONS, optionLabel } from "../../../lib/listing-options";
+import { formatMiles, formatPrice, listingTitle } from "../../../lib/listing-rules";
+import { deleteDraft, getOwnListing, getPhotos, isEditable, photoView } from "../../../lib/listings";
+
+const user = Astro.locals.user!;
+const id = Astro.params.id!;
+
+let listing = await getOwnListing(user.id, id);
+if (!listing) return Astro.rewrite(url("/404"));
+
+if (Astro.request.method === "POST") {
+  const intent = String((await Astro.request.formData()).get("intent") ?? "");
+  if (intent === "delete") {
+    await deleteDraft(user.id, id);
+    return Astro.redirect(`${url("/")}?notice=deleted`, 303);
+  }
+  if (intent === "unsubmit" && listing.status === "submitted") {
+    // Pull it back out of the review queue to make changes.
+    await getDb()
+      .update(listings)
+      .set({ status: "draft", submittedAt: null, updatedAt: new Date() })
+      .where(and(eq(listings.id, id), eq(listings.userId, user.id), eq(listings.status, "submitted")));
+    return Astro.redirect(`${url(`/listings/${id}/edit`)}?step=review`, 303);
+  }
+  return Astro.redirect(url(`/listings/${id}`), 303);
+}
+
+const photos = await getPhotos(id);
+const title = listingTitle(listing);
+const editUrl = url(`/listings/${id}/edit`);
+const publicUrl = listing.slug ? siteUrl(`/listings/${listing.slug}`) : null;
+
+const explain: Record<string, string> = {
+  draft: "Only you can see this draft. Finish the steps and submit it for review.",
+  submitted: "Our team is reviewing your listing. This usually takes less than a day. We will email you.",
+  changes_requested: "Our reviewer asked for a few changes. Update the listing and submit it again.",
+  approved: "Approved. It is being published now.",
+  live: "Your listing is live on Petrol Head Market.",
+  offer_accepted: "You accepted an offer. Mark it as sold when the deal is done.",
+  sold: "Sold. Congratulations.",
+  rejected: "This listing was not accepted.",
+  withdrawn: "You took this listing down.",
+};
+---
+
+<Base title={title}>
+  <p class="label"><a href={url("/")}>My garage</a></p>
+  <div class="head">
+    <h1 class="page-title">{title}</h1>
+    <StatusBadge status={listing.status} />
+  </div>
+
+  {Astro.url.searchParams.get("submitted") && (
+    <Notice tone="ok"><p>Submitted for review. We will email you when it is live or if anything needs changing.</p></Notice>
+  )}
+  <p class="lede">{explain[listing.status]}</p>
+
+  {
+    listing.reviewNotes && (listing.status === "changes_requested" || listing.status === "rejected") && (
+      <Notice tone={listing.status === "rejected" ? "error" : "info"}>
+        <p><strong>Notes from our reviewer:</strong></p>
+        <p class="pre">{listing.reviewNotes}</p>
+      </Notice>
+    )
+  }
+
+  <div class="actions">
+    {isEditable(listing) && <a class="btn" href={editUrl}>{listing.status === "draft" ? "Continue editing" : "Make changes"}</a>}
+    {publicUrl && <a class="btn btn--secondary" href={publicUrl}>View public listing</a>}
+    {
+      listing.status === "submitted" && (
+        <form method="post">
+          <input type="hidden" name="intent" value="unsubmit" />
+          <button class="btn btn--secondary" type="submit">Move back to draft</button>
+        </form>
+      )
+    }
+  </div>
+
+  <div class="layout">
+    <div>
+      {
+        photos.length > 0 ? (
+          <div class="gallery">
+            {photos.slice(0, 9).map((p, i) => (
+              <img src={photoView(p).url} alt={`Photo ${i + 1}`} loading={i < 3 ? "eager" : "lazy"} />
+            ))}
+          </div>
+        ) : (
+          <div class="card empty">No photos yet.</div>
+        )
+      }
+      {photos.length > 9 && <p class="muted">And {photos.length - 9} more photos.</p>}
+    </div>
+    <aside class="card">
+      <p class="price big">{formatPrice(listing.price) || "No price yet"}</p>
+      <div class="spec-row"><span>Mileage</span><span>{formatMiles(listing.mileage) || "Not set"}</span></div>
+      <div class="spec-row"><span>Transmission</span><span>{optionLabel(TRANSMISSIONS, listing.transmission) || "Not set"}</span></div>
+      <div class="spec-row"><span>Drivetrain</span><span>{optionLabel(DRIVETRAINS, listing.drivetrain) || "Not set"}</span></div>
+      <div class="spec-row"><span>Body</span><span>{optionLabel(BODY_STYLES, listing.bodyStyle) || "Not set"}</span></div>
+      <div class="spec-row"><span>Title</span><span>{optionLabel(TITLE_STATUSES, listing.titleStatus) || "Not set"}</span></div>
+      <div class="spec-row"><span>Location</span><span>{[listing.locationCity, listing.locationState].filter(Boolean).join(", ") || "Not set"}</span></div>
+      <div class="spec-row"><span>Offers</span><span>{listing.acceptsOffers ? "Accepted" : "Not accepted"}</span></div>
+      <div class="spec-row"><span>Photos</span><span>{photos.length}</span></div>
+    </aside>
+  </div>
+
+  {
+    listing.status === "draft" && (
+      <form method="post" class="danger" onsubmit="return confirm('Delete this draft and its photos? This cannot be undone.')">
+        <input type="hidden" name="intent" value="delete" />
+        <button class="linkish" type="submit">Delete this draft</button>
+      </form>
+    )
+  }
+</Base>
+
+<style>
+  .label a {
+    color: var(--muted);
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .head h1 {
+    margin: 0;
+  }
+  .lede {
+    margin-top: 12px;
+  }
+  .pre {
+    white-space: pre-wrap;
+  }
+  .actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 24px;
+  }
+  .actions form {
+    margin: 0;
+  }
+  .layout {
+    display: grid;
+    gap: 20px;
+  }
+  @media (min-width: 860px) {
+    .layout {
+      grid-template-columns: 1.6fr 1fr;
+      align-items: start;
+    }
+  }
+  .gallery {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .gallery img {
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 8px;
+    width: 100%;
+  }
+  .gallery img:first-child {
+    grid-column: 1 / -1;
+  }
+  .empty {
+    color: var(--muted);
+    text-align: center;
+    padding: 48px 20px;
+  }
+  .big {
+    font-size: 28px;
+    margin: 0 0 8px;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .danger {
+    margin-top: 32px;
+  }
+  .linkish {
+    border: 0;
+    background: none;
+    color: var(--red);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    min-height: var(--tap);
+    cursor: pointer;
+    padding: 0;
+  }
+</style>

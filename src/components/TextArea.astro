@@ -1,0 +1,34 @@
+---
+interface Props {
+  name: string;
+  label: string;
+  value?: string | null;
+  error?: string;
+  hint?: string;
+  maxlength?: number;
+  rows?: number;
+  counter?: number;
+}
+const { name, label, value, error, hint, maxlength, rows = 6, counter } = Astro.props;
+const id = `f-${name}`;
+const describedBy = [hint && `${id}-hint`, error && `${id}-error`, counter && `${id}-count`].filter(Boolean).join(" ") || undefined;
+---
+
+<div class="field">
+  <label for={id}>{label}</label>
+  {hint && <span class="hint" id={`${id}-hint`}>{hint}</span>}
+  <textarea
+    id={id}
+    name={name}
+    rows={rows}
+    maxlength={maxlength}
+    aria-invalid={error ? "true" : undefined}
+    aria-describedby={describedBy}
+    data-min={counter}>{value ?? ""}</textarea>
+  {counter && (
+    <span class="hint counter" id={`${id}-count`} data-counter-for={id}>
+      {(value ?? "").length} of {counter} characters minimum
+    </span>
+  )}
+  {error && <span class="error" id={`${id}-error`}>{error}</span>}
+</div>

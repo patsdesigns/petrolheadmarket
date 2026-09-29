@@ -1,7 +1,7 @@
 // Drizzle schema for the D1 database (binding DB).
 // After changing this file run `npm run db:generate` and commit ./drizzle.
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index } from "drizzle-orm/sqlite-core";
 import { user } from "./auth-schema";
 
 // Better Auth's own tables (user, session, account, verification, rate_limit).
@@ -24,3 +24,105 @@ export const profiles = sqliteTable("profiles", {
 });
 
 export type Profile = typeof profiles.$inferSelect;
+
+export const LISTING_STATUSES = [
+  "draft",
+  "awaiting_payment", // reserved for a future listing fee, not used yet
+  "submitted",
+  "changes_requested",
+  "approved",
+  "live",
+  "offer_accepted",
+  "sold",
+  "rejected",
+  "withdrawn",
+] as const;
+export type ListingStatus = (typeof LISTING_STATUSES)[number];
+
+export const listings = sqliteTable(
+  "listings",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    status: text("status", { enum: LISTING_STATUSES }).notNull().default("draft"),
+
+    // The car
+    year: integer("year"),
+    make: text("make"),
+    model: text("model"),
+    bodyStyle: text("body_style"),
+    engine: text("engine"),
+    transmission: text("transmission"),
+    drivetrain: text("drivetrain"),
+    exteriorColor: text("exterior_color"),
+    interiorColor: text("interior_color"),
+    mileage: integer("mileage"),
+    vin: text("vin"),
+    headline: text("headline"),
+
+    // Condition and history
+    description: text("description"),
+    highlights: text("highlights"),
+    knownIssues: text("known_issues"),
+    modifications: text("modifications"),
+    serviceHistory: text("service_history"),
+    ownerCount: integer("owner_count"),
+    titleStatus: text("title_status"),
+    titleState: text("title_state"),
+    recordsOnFile: integer("records_on_file", { mode: "boolean" }).notNull().default(false),
+    videoUrl: text("video_url"),
+
+    // Price and contact
+    price: integer("price"),
+    acceptsOffers: integer("accepts_offers", { mode: "boolean" }).notNull().default(true),
+    locationCity: text("location_city"),
+    locationState: text("location_state"),
+    contactMethod: text("contact_method", { enum: ["messages", "messages_phone"] })
+      .notNull()
+      .default("messages"),
+    contactPhone: text("contact_phone"),
+
+    // Admin controlled
+    sellerType: text("seller_type", { enum: ["private", "dealer"] }).notNull().default("private"),
+    verifiedSeller: integer("verified_seller", { mode: "boolean" }).notNull().default(false),
+    featured: integer("featured", { mode: "boolean" }).notNull().default(false),
+
+    // Review and publishing
+    slug: text("slug").unique(),
+    cmsItemId: text("cms_item_id"),
+    reviewNotes: text("review_notes"),
+    reviewerId: text("reviewer_id"),
+    submittedAt: integer("submitted_at", { mode: "timestamp_ms" }),
+    reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+    publishedAt: integer("published_at", { mode: "timestamp_ms" }),
+    soldAt: integer("sold_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [
+    index("listings_user_idx").on(t.userId),
+    index("listings_status_idx").on(t.status, t.submittedAt),
+  ],
+);
+
+export type Listing = typeof listings.$inferSelect;
+
+export const listingPhotos = sqliteTable(
+  "listing_photos",
+  {
+    id: text("id").primaryKey(),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    r2Key: text("r2_key").notNull(),
+    position: integer("position").notNull(),
+    width: integer("width"),
+    height: integer("height"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [index("listing_photos_listing_idx").on(t.listingId, t.position)],
+);
+
+export type ListingPhoto = typeof listingPhotos.$inferSelect;
