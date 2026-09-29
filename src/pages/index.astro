@@ -1,0 +1,38 @@
+---
+import Base from "../layouts/Base.astro";
+import { url } from "../lib/paths";
+---
+
+<Base title="My garage">
+  <h1 class="page-title">My garage</h1>
+  <p class="lede">
+    Your listings, offers and messages will live here. Accounts are coming next.
+  </p>
+
+  <div class="card garage-empty">
+    <span class="badge badge--ok">App is running</span>
+    <h2>Ready to sell your car?</h2>
+    <p>
+      List it for free. A real person reviews every listing before it goes live, so buyers
+      know they are looking at an honest car.
+    </p>
+    <a class="btn" href={url("/sell")}>Start a listing</a>
+  </div>
+</Base>
+
+<style>
+  .garage-empty {
+    display: grid;
+    gap: 12px;
+    justify-items: start;
+    max-width: 560px;
+  }
+  .garage-empty h2 {
+    font-size: 24px;
+    margin: 4px 0 0;
+  }
+  .garage-empty p {
+    margin: 0;
+    color: var(--muted);
+  }
+</style>

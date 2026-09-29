@@ -37,6 +37,9 @@ Key points:
 - Migrations in the migrations directory are applied automatically on each deploy.
 - Webflow Cloud runs the framework's own build and ignores custom build scripts. It may override cache headers.
 - Use `npm run preview` (Wrangler) to test locally in the same runtime, at the mount path.
+- Scaffolded from Webflow's official starter (`Webflow-Examples/hello-world-astro`): `base: "/app"` is set in `astro.config.mjs`, and every internal URL goes through `src/lib/paths.ts`.
+- Astro 7 removed `Astro.locals.runtime.env`. Read bindings and variables with `import { env } from "cloudflare:workers"`.
+- The Cloudflare adapter adds a `SESSION` KV binding for Astro sessions automatically. We don't use Astro sessions (Better Auth keeps sessions in D1).
 - Secrets are set in the Webflow Cloud dashboard (environment variables), never committed.
 
 ## Environment variables

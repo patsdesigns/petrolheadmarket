@@ -1,0 +1,130 @@
+---
+import { url, siteUrl } from "../lib/paths";
+
+interface Props {
+  /** Signed-in user, once accounts exist (phase 2). */
+  user?: { displayName: string } | null;
+  unread?: number;
+}
+
+const { user = null, unread = 0 } = Astro.props;
+---
+
+<header class="site-header">
+  <div class="container site-header__inner">
+    <a class="brand" href={siteUrl("/")}>
+      <span class="brand__logo" aria-hidden="true">PH</span>
+      <span class="brand__text">
+        <span class="brand__name">Petrol Head Market</span>
+        <span class="brand__tag">Enthusiast car classifieds</span>
+      </span>
+    </a>
+    <nav class="site-nav" aria-label="Account">
+      {
+        user ? (
+          <>
+            <a href={url("/")}>My garage</a>
+            <a href={url("/inbox")}>
+              Inbox
+              {unread > 0 && (
+                <span class="site-nav__count" aria-label={`${unread} unread`}>
+                  {unread}
+                </span>
+              )}
+            </a>
+            <a href={url("/account")}>{user.displayName}</a>
+          </>
+        ) : (
+          <>
+            <a href={siteUrl("/")}>Browse cars</a>
+            <a href={url("/login")}>Sign in</a>
+          </>
+        )
+      }
+      <a class="btn site-nav__sell" href={url("/sell")}>Sell your car</a>
+    </nav>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    background: var(--ink);
+    color: var(--white);
+  }
+  .site-header__inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    min-height: 68px;
+    flex-wrap: wrap;
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+    color: var(--white);
+  }
+  .brand__logo {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex: none;
+    border-radius: 50%;
+    background: var(--white);
+    color: var(--ink);
+    box-shadow: 0 0 0 3px var(--red);
+    font-weight: 900;
+    font-size: 15px;
+    letter-spacing: -0.02em;
+  }
+  .brand__text {
+    display: grid;
+    line-height: 1.15;
+  }
+  .brand__name {
+    font-weight: 900;
+    font-size: 17px;
+  }
+  .brand__tag {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: rgba(255, 255, 255, 0.65);
+  }
+  .site-nav {
+    display: flex;
+    align-items: center;
+    gap: 4px 18px;
+    flex-wrap: wrap;
+  }
+  .site-nav a:not(.btn) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: var(--tap);
+    color: var(--white);
+    text-decoration: none;
+    font-weight: 600;
+  }
+  .site-nav a:not(.btn):hover {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+  }
+  .site-nav__count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--red);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+</style>

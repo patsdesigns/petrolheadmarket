@@ -1,0 +1,263 @@
+/* Design tokens: match the public Webflow site exactly (see CLAUDE.md, Design). */
+:root {
+  --ink: #15171b;
+  --red: #d5001c;
+  --red-dark: #b00017;
+  --paper: #f6f6f3;
+  --white: #ffffff;
+  --line: #ddddd5;
+  --muted: #5a5e66;
+  --ok: #1a6b3c;
+  --ok-bg: #eaf4ee;
+  --ok-line: #cbe3d4;
+
+  --font-ui: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-card: 12px;
+  --radius-btn: 8px;
+  --tap: 44px;
+  --gutter: 16px;
+  --max: 1120px;
+  --focus: 0 0 0 3px var(--white), 0 0 0 5px var(--red);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+a {
+  color: inherit;
+}
+
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 100;
+  background: var(--white);
+  padding: 8px 12px;
+  border-radius: var(--radius-btn);
+}
+.skip-link:focus {
+  left: 8px;
+}
+
+/* Layout */
+.container {
+  width: 100%;
+  max-width: var(--max);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+main {
+  padding: 32px 0 64px;
+}
+
+/* Type */
+h1,
+h2,
+h3 {
+  font-weight: 900;
+  line-height: 1.1;
+  margin: 0 0 12px;
+}
+
+.page-title {
+  font-size: clamp(28px, 6vw, 44px);
+  text-transform: uppercase;
+  letter-spacing: -0.01em;
+}
+
+.lede {
+  color: var(--muted);
+  margin: 0 0 24px;
+  max-width: 60ch;
+}
+
+.mono,
+.label {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+}
+
+.label {
+  color: var(--muted);
+}
+
+.price {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+/* Cards */
+.card {
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 20px;
+}
+
+/* Spec rows */
+.spec-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.spec-row > :first-child {
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--paper);
+  color: var(--ink);
+}
+.badge--ok {
+  color: var(--ok);
+  background: var(--ok-bg);
+  border-color: var(--ok-line);
+}
+.badge--red {
+  color: var(--white);
+  background: var(--red);
+  border-color: var(--red);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: var(--tap);
+  padding: 10px 20px;
+  border-radius: var(--radius-btn);
+  border: 1px solid var(--red);
+  background: var(--red);
+  color: var(--white);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.btn:hover {
+  background: var(--red-dark);
+  border-color: var(--red-dark);
+}
+.btn--secondary {
+  background: var(--white);
+  color: var(--ink);
+  border-color: var(--ink);
+}
+.btn--secondary:hover {
+  background: var(--paper);
+  border-color: var(--ink);
+}
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Forms */
+.field {
+  display: grid;
+  gap: 6px;
+  margin-bottom: 18px;
+}
+.field label {
+  font-weight: 700;
+}
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  min-height: var(--tap);
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 17px;
+  color: var(--ink);
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+}
+.field textarea {
+  min-height: 140px;
+  resize: vertical;
+}
+.field input:focus-visible,
+.field select:focus-visible,
+.field textarea:focus-visible {
+  border-color: var(--ink);
+}
+.field .hint {
+  color: var(--muted);
+  font-size: 14px;
+}
+.field .error {
+  color: var(--red);
+  font-size: 14px;
+  font-weight: 600;
+}
+.field [aria-invalid="true"] {
+  border-color: var(--red);
+}
