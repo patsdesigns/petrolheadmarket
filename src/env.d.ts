@@ -15,3 +15,11 @@ declare namespace Cloudflare {
     PUBLIC_SITE_URL?: string;
   }
 }
+
+declare namespace App {
+  interface Locals {
+    user: import("./lib/auth").SessionData["user"] | null;
+    session: import("./lib/auth").SessionData["session"] | null;
+    profile: import("./db/schema").Profile | null;
+  }
+}

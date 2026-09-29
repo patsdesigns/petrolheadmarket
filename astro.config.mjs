@@ -9,6 +9,9 @@ export default defineConfig({
   trailingSlash: "never",
   output: "server",
   compressHTML: true,
+  // Our middleware checks Origin against PUBLIC_SITE_URL instead, because
+  // behind the Webflow proxy the request URL may not match the browser origin.
+  security: { checkOrigin: false },
   adapter: cloudflare({
     // Photos are resized in the browser and served straight from R2.
     imageService: "passthrough",

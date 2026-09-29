@@ -6,11 +6,15 @@ import { url } from "../lib/paths";
 <Base title="My garage">
   <h1 class="page-title">My garage</h1>
   <p class="lede">
-    Your listings, offers and messages will live here. Accounts are coming next.
+    Your listings, offers and messages will live here.
   </p>
 
   <div class="card garage-empty">
-    <span class="badge badge--ok">App is running</span>
+    {Astro.locals.user?.emailVerified ? (
+      <span class="badge badge--ok">Email confirmed</span>
+    ) : (
+      <span class="badge">Confirm your email to list a car</span>
+    )}
     <h2>Ready to sell your car?</h2>
     <p>
       List it for free. A real person reviews every listing before it goes live, so buyers

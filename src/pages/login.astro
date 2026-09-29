@@ -1,0 +1,62 @@
+---
+import { z } from "zod";
+import AuthLayout from "../layouts/AuthLayout.astro";
+import Field from "../components/Field.astro";
+import Notice from "../components/Notice.astro";
+import { url } from "../lib/paths";
+import { emailField, parseForm, safeNext } from "../lib/forms";
+import { callAuth, friendlyAuthError, redirectWithCookies } from "../lib/auth-call";
+
+const next = safeNext(Astro.url.searchParams.get("next"));
+const nextQuery = Astro.url.searchParams.get("next") ? `?next=${encodeURIComponent(next)}` : "";
+
+let errors: Record<string, string> = {};
+let values: Record<string, string> = {};
+let formError = "";
+
+if (Astro.request.method === "POST") {
+  const parsed = await parseForm(
+    Astro.request,
+    z.object({ email: emailField, password: z.string().min(1, "Enter your password.").max(128) }),
+  );
+  values = parsed.values;
+  if (!parsed.ok) {
+    errors = parsed.errors;
+  } else {
+    const result = await callAuth(Astro.request, "/sign-in/email", {
+      email: parsed.data.email,
+      password: parsed.data.password,
+      rememberMe: true,
+    });
+    if (result.ok) return redirectWithCookies(next, result.cookies);
+    formError = friendlyAuthError(result);
+    Astro.response.status = result.status === 429 ? 429 : 400;
+  }
+}
+
+const notice = Astro.url.searchParams.get("notice");
+---
+
+<AuthLayout title="Sign in" lede="Sign in to sell your car, make offers and message sellers.">
+  {notice === "signed-out" && <Notice tone="ok"><p>You are signed out.</p></Notice>}
+  {notice === "password-reset" && <Notice tone="ok"><p>Your password was changed. Sign in with the new one.</p></Notice>}
+  {formError && <Notice tone="error"><p>{formError}</p></Notice>}
+  <form method="post" novalidate>
+    <Field name="email" label="Email" type="email" inputmode="email" autocomplete="email" value={values.email} error={errors.email} maxlength={254} />
+    <Field name="password" label="Password" type="password" autocomplete="current-password" error={errors.password} maxlength={128} />
+    <p class="forgot"><a href={url("/forgot-password")}>Forgot your password?</a></p>
+    <button class="btn" type="submit">Sign in</button>
+  </form>
+  <Fragment slot="after">
+    <p>New here? <a href={`${url("/signup")}${nextQuery}`}>Create an account</a></p>
+  </Fragment>
+</AuthLayout>
+
+<style>
+  .forgot {
+    margin: -6px 0 18px;
+  }
+  .forgot a {
+    color: var(--muted);
+  }
+</style>

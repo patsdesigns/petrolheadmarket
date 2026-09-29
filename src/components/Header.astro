@@ -3,7 +3,7 @@ import { url, siteUrl } from "../lib/paths";
 
 interface Props {
   /** Signed-in user, once accounts exist (phase 2). */
-  user?: { displayName: string } | null;
+  user?: { displayName: string; isAdmin: boolean } | null;
   unread?: number;
 }
 
@@ -32,7 +32,20 @@ const { user = null, unread = 0 } = Astro.props;
                 </span>
               )}
             </a>
-            <a href={url("/account")}>{user.displayName}</a>
+            <details class="menu">
+              <summary>
+                {user.displayName}
+                <span aria-hidden="true" class="menu__caret">▾</span>
+              </summary>
+              <div class="menu__panel">
+                <a href={url("/account")}>Account settings</a>
+                <a href={url("/offers")}>Offers</a>
+                {user.isAdmin && <a href={url("/admin")}>Review queue</a>}
+                <form method="post" action={url("/logout")}>
+                  <button type="submit">Sign out</button>
+                </form>
+              </div>
+            </details>
           </>
         ) : (
           <>
@@ -41,7 +54,9 @@ const { user = null, unread = 0 } = Astro.props;
           </>
         )
       }
-      <a class="btn site-nav__sell" href={url("/sell")}>Sell your car</a>
+      <a class="btn site-nav__sell" href={url("/sell")}>
+        <span class="sell-long">Sell your car</span><span class="sell-short">Sell</span>
+      </a>
     </nav>
   </div>
 </header>
@@ -115,6 +130,83 @@ const { user = null, unread = 0 } = Astro.props;
   .site-nav a:not(.btn):hover {
     text-decoration: underline;
     text-underline-offset: 4px;
+  }
+  .menu {
+    position: relative;
+  }
+  .menu summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-height: var(--tap);
+    font-weight: 600;
+    cursor: pointer;
+    list-style: none;
+  }
+  .menu summary::-webkit-details-marker {
+    display: none;
+  }
+  .menu__caret {
+    font-size: 12px;
+  }
+  .menu__panel {
+    position: absolute;
+    right: 0;
+    top: 100%;
+    z-index: 20;
+    min-width: 200px;
+    display: grid;
+    padding: 6px;
+    background: var(--white);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(21, 23, 27, 0.15);
+  }
+  .menu__panel a,
+  .menu__panel button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: var(--tap);
+    padding: 0 12px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--ink) !important;
+    font: inherit;
+    font-weight: 600;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .menu__panel a:hover,
+  .menu__panel button:hover {
+    background: var(--paper);
+    text-decoration: none !important;
+  }
+  .menu__panel form {
+    margin: 0;
+    border-top: 1px dashed var(--line);
+    padding-top: 4px;
+    margin-top: 4px;
+  }
+  .sell-short {
+    display: none;
+  }
+  @media (max-width: 560px) {
+    .site-nav {
+      gap: 4px 14px;
+    }
+    .site-nav__sell {
+      padding: 8px 14px;
+    }
+    .sell-long {
+      display: none;
+    }
+    .sell-short {
+      display: inline;
+    }
   }
   .site-nav__count {
     display: inline-grid;

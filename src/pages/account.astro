@@ -1,0 +1,197 @@
+---
+import { z } from "zod";
+import { eq } from "drizzle-orm";
+import Base from "../layouts/Base.astro";
+import Field from "../components/Field.astro";
+import Notice from "../components/Notice.astro";
+import { getDb } from "../db/client";
+import { profiles } from "../db/schema";
+import { url } from "../lib/paths";
+import { emailField, parseForm, passwordField } from "../lib/forms";
+import { callAuth, friendlyAuthError, redirectWithCookies } from "../lib/auth-call";
+
+const user = Astro.locals.user!;
+let profile = Astro.locals.profile!;
+
+type Section = "profile" | "email" | "password";
+const errors: Record<Section, Record<string, string>> = { profile: {}, email: {}, password: {} };
+const formErrors: Partial<Record<Section, string>> = {};
+let values: Record<string, string> = {};
+
+const saved = Astro.url.searchParams.get("saved") as Section | "email-sent" | null;
+
+const phoneField = z
+  .string()
+  .trim()
+  .max(25, "Use 25 characters or fewer.")
+  .refine((v) => v === "" || (/^[+()\d\s.-]+$/.test(v) && v.replace(/\D/g, "").length >= 10), {
+    message: "Enter a phone number with area code, like (555) 123-4567.",
+  });
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.clone().formData();
+  const intent = String(form.get("intent") ?? "");
+
+  if (intent === "profile") {
+    const parsed = await parseForm(
+      Astro.request,
+      z.object({
+        displayName: z.string().trim().min(2, "Enter a display name.").max(40, "Use 40 characters or fewer."),
+        phone: phoneField,
+        emailNotifications: z.string().optional(),
+      }),
+    );
+    values = parsed.values;
+    if (!parsed.ok) {
+      errors.profile = parsed.errors;
+    } else {
+      await getDb()
+        .update(profiles)
+        .set({
+          displayName: parsed.data.displayName,
+          phone: parsed.data.phone || null,
+          emailNotifications: parsed.data.emailNotifications === "on",
+        })
+        .where(eq(profiles.userId, user.id));
+      return Astro.redirect(`${url("/account")}?saved=profile`, 303);
+    }
+  } else if (intent === "email") {
+    const parsed = await parseForm(Astro.request, z.object({ newEmail: emailField }));
+    values = parsed.values;
+    if (!parsed.ok) {
+      errors.email = parsed.errors;
+    } else if (parsed.data.newEmail === user.email) {
+      errors.email = { newEmail: "That is already your email." };
+    } else {
+      const result = await callAuth(Astro.request, "/change-email", {
+        newEmail: parsed.data.newEmail,
+        callbackURL: `${url("/account")}?saved=email`,
+      });
+      if (result.ok) {
+        // The change only happens once the new address is confirmed.
+        return Astro.redirect(`${url("/account")}?saved=email-sent`, 303);
+      }
+      formErrors.email = friendlyAuthError(result);
+    }
+  } else if (intent === "password") {
+    const parsed = await parseForm(
+      Astro.request,
+      z
+        .object({
+          currentPassword: z.string().min(1, "Enter your current password.").max(128),
+          newPassword: passwordField,
+          confirm: z.string().max(128),
+        })
+        .refine((d) => d.newPassword === d.confirm, { path: ["confirm"], message: "The passwords do not match." }),
+    );
+    if (!parsed.ok) {
+      errors.password = parsed.errors;
+    } else {
+      const result = await callAuth(Astro.request, "/change-password", {
+        currentPassword: parsed.data.currentPassword,
+        newPassword: parsed.data.newPassword,
+        revokeOtherSessions: true,
+      });
+      if (result.ok) return redirectWithCookies(`${url("/account")}?saved=password`, result.cookies);
+      formErrors.password = friendlyAuthError(result);
+    }
+  }
+}
+
+const v = (key: string, fallback: string | null | undefined) => values[key] ?? fallback ?? "";
+const notifyChecked = values.displayName !== undefined ? values.emailNotifications === "on" : profile.emailNotifications;
+---
+
+<Base title="Account settings">
+  <h1 class="page-title">Account</h1>
+  <p class="lede">Signed in as {user.email}</p>
+
+  {
+    !user.emailVerified && (
+      <Notice tone="info">
+        <p>
+          Your email is not confirmed yet. <a href={url("/verify-email")}>Confirm it</a> to list a car, make offers and
+          message sellers.
+        </p>
+      </Notice>
+    )
+  }
+
+  <div class="sections">
+    <section class="card" aria-labelledby="profile-h">
+      <h2 id="profile-h">Profile</h2>
+      {saved === "profile" && <Notice tone="ok"><p>Profile saved.</p></Notice>}
+      <form method="post" novalidate>
+        <input type="hidden" name="intent" value="profile" />
+        <Field name="displayName" label="Display name" autocomplete="nickname" value={v("displayName", profile.displayName)}
+          error={errors.profile.displayName} maxlength={40}
+          hint="Shown on your listings and in messages. First name and last initial works best, like Dave K." />
+        <Field name="phone" label="Phone" type="tel" inputmode="tel" autocomplete="tel" required={false}
+          value={v("phone", profile.phone)} error={errors.profile.phone} maxlength={25}
+          hint="Optional. Only shown on a listing if you choose Messages and phone for it." />
+        <label class="check">
+          <input type="checkbox" name="emailNotifications" checked={notifyChecked} />
+          <span>Email me about new messages and offers</span>
+        </label>
+        <button class="btn" type="submit">Save profile</button>
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="email-h">
+      <h2 id="email-h">Email</h2>
+      {saved === "email" && <Notice tone="ok"><p>Your email was updated.</p></Notice>}
+      {saved === "email-sent" && (
+        <Notice tone="ok"><p>Check your new inbox. The change happens when you open the link we sent.</p></Notice>
+      )}
+      {formErrors.email && <Notice tone="error"><p>{formErrors.email}</p></Notice>}
+      <form method="post" novalidate>
+        <input type="hidden" name="intent" value="email" />
+        <Field name="newEmail" label="New email" type="email" inputmode="email" autocomplete="email"
+          value={values.newEmail} error={errors.email.newEmail} maxlength={254} />
+        <button class="btn btn--secondary" type="submit">Change email</button>
+      </form>
+    </section>
+
+    <section class="card" aria-labelledby="password-h">
+      <h2 id="password-h">Password</h2>
+      {saved === "password" && <Notice tone="ok"><p>Password changed. You were signed out everywhere else.</p></Notice>}
+      {formErrors.password && <Notice tone="error"><p>{formErrors.password}</p></Notice>}
+      <form method="post" novalidate>
+        <input type="hidden" name="intent" value="password" />
+        <Field name="currentPassword" label="Current password" type="password" autocomplete="current-password"
+          error={errors.password.currentPassword} maxlength={128} />
+        <Field name="newPassword" label="New password" type="password" autocomplete="new-password"
+          error={errors.password.newPassword} maxlength={128} hint="At least 8 characters." />
+        <Field name="confirm" label="Type it again" type="password" autocomplete="new-password"
+          error={errors.password.confirm} maxlength={128} />
+        <button class="btn btn--secondary" type="submit">Change password</button>
+      </form>
+    </section>
+  </div>
+</Base>
+
+<style>
+  .sections {
+    display: grid;
+    gap: 20px;
+    max-width: 640px;
+  }
+  h2 {
+    font-size: 22px;
+    margin-bottom: 16px;
+  }
+  .check {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: var(--tap);
+    margin: -4px 0 18px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .check input {
+    width: 22px;
+    height: 22px;
+    accent-color: var(--red);
+  }
+</style>

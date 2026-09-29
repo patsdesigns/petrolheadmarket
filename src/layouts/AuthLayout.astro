@@ -1,0 +1,44 @@
+---
+import Base from "./Base.astro";
+
+interface Props {
+  title: string;
+  lede?: string;
+}
+const { title, lede } = Astro.props;
+---
+
+<Base title={title}>
+  <div class="auth">
+    <h1 class="page-title">{title}</h1>
+    {lede && <p class="lede">{lede}</p>}
+    <div class="card auth__card">
+      <slot />
+    </div>
+    <div class="auth__after">
+      <slot name="after" />
+    </div>
+  </div>
+</Base>
+
+<style>
+  .auth {
+    max-width: 460px;
+    margin: 0 auto;
+  }
+  .auth__card :global(.btn) {
+    width: 100%;
+  }
+  .auth__after {
+    margin-top: 16px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .auth__after :global(p) {
+    margin: 8px 0;
+  }
+  .auth__after :global(a) {
+    color: var(--ink);
+    font-weight: 700;
+  }
+</style>

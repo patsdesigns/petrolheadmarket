@@ -1,0 +1,76 @@
+---
+import AuthLayout from "../layouts/AuthLayout.astro";
+import Notice from "../components/Notice.astro";
+import { url } from "../lib/paths";
+import { safeNext } from "../lib/forms";
+import { callAuth, friendlyAuthError } from "../lib/auth-call";
+
+const params = Astro.url.searchParams;
+const next = safeNext(params.get("next"));
+const user = Astro.locals.user;
+
+let resent = false;
+let formError = params.get("error") ? "This confirmation link has expired or was already used. Send a new one below." : "";
+
+if (Astro.request.method === "POST" && user && !user.emailVerified) {
+  const result = await callAuth(Astro.request, "/send-verification-email", {
+    email: user.email,
+    callbackURL: `${url("/verify-email")}?verified=1&next=${encodeURIComponent(next)}`,
+  });
+  if (result.ok) resent = true;
+  else formError = friendlyAuthError(result);
+}
+
+// After the link is opened Better Auth signs the person in, so trust the
+// session. The query flag only matters if they opened it signed out.
+const verified = user ? user.emailVerified : params.get("verified") === "1";
+---
+
+{
+  verified && !params.get("error") ? (
+    <AuthLayout title="Email confirmed">
+      <Notice tone="ok"><p>Thanks. Your email is confirmed.</p></Notice>
+      <p>You can now list a car, make offers and message sellers.</p>
+      <a class="btn" href={next}>Continue</a>
+    </AuthLayout>
+  ) : (
+    <AuthLayout title="Confirm your email">
+      {formError && <Notice tone="error"><p>{formError}</p></Notice>}
+      {resent && <Notice tone="ok"><p>A new link is on its way.</p></Notice>}
+      {user ? (
+        <>
+          <p>
+            We sent a link to <strong>{user.email}</strong>. Open it to confirm your email. You need to do this
+            before you list a car, make an offer or message a seller.
+          </p>
+          <p class="muted">Nothing after a few minutes? Check your spam folder, or send it again.</p>
+          <form method="post">
+            <button class="btn btn--secondary" type="submit">Send the link again</button>
+          </form>
+          <p class="skip"><a href={next}>Do this later</a></p>
+        </>
+      ) : (
+        <>
+          <p>Sign in to send a new confirmation link.</p>
+          <a class="btn" href={`${url("/login")}?next=${encodeURIComponent(url("/verify-email"))}`}>Sign in</a>
+        </>
+      )}
+    </AuthLayout>
+  )
+}
+
+<style>
+  p {
+    margin: 0 0 14px;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .skip {
+    margin: 14px 0 0;
+    text-align: center;
+  }
+  .skip a {
+    color: var(--muted);
+  }
+</style>

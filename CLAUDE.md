@@ -42,6 +42,16 @@ Key points:
 - The Cloudflare adapter adds a `SESSION` KV binding for Astro sessions automatically. We don't use Astro sessions (Better Auth keeps sessions in D1).
 - Secrets are set in the Webflow Cloud dashboard (environment variables), never committed.
 
+## Accounts (decided in phase 2)
+
+- Better Auth lives in `src/lib/auth.ts`, mounted at `/app/api/auth/*`. `baseURL` is `PUBLIC_SITE_URL`. Cookies use the `phm` prefix, httpOnly, SameSite Lax, Secure on https.
+- Better Auth tables are generated into `src/db/auth-schema.ts` by `npm run auth:schema` (config in `scripts/auth-schema.config.ts`). Never edit that file by hand.
+- Pages are server rendered forms with no client JS. Form handlers call Better Auth through `callAuth()` in `src/lib/auth-call.ts`, which goes through `auth.handler` so Better Auth's rate limits apply.
+- Signing in does not require a verified email. Listing, offers and messages check `user.emailVerified` instead.
+- `src/middleware.ts` loads the session and profile, sends signed out people to `/app/login?next=...`, returns the 404 page for non admins on `/app/admin*`, and rejects cross-origin POSTs (CSRF). Astro's own `checkOrigin` is off because the request URL behind the Webflow proxy may not match the browser origin.
+- The admin role is synced from `ADMIN_EMAILS` on every sign in (added or removed).
+- Without `RESEND_API_KEY`, emails are printed to the console so local flows still work.
+
 ## Environment variables
 
 | Name | Secret | Purpose |
@@ -53,7 +63,7 @@ Key points:
 | `RESEND_API_KEY` | yes | Transactional email |
 | `EMAIL_FROM` | no | Sender address |
 | `ADMIN_EMAILS` | no | Comma separated emails that get the admin role on sign in |
-| `PUBLIC_SITE_URL` | no | `https://petrol-head-market.webflow.io` (becomes the custom domain later) |
+| `PUBLIC_SITE_URL` | no | `https://petrol-head-market.webflow.io` (becomes the custom domain later). Also the auth base URL, so it must match the domain people use. |
 
 The Webflow token is server only. Never send it to the browser.
 
