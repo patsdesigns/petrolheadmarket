@@ -64,6 +64,16 @@ Key points:
 - Workers report the date as 1970 while a module loads. Never compute dates (like the current year) at module scope.
 - When a listing is submitted, everyone in `ADMIN_EMAILS` gets an email.
 
+## Review and publishing (decided in phase 4)
+
+- CMS mapping is `buildFieldData()` in `src/lib/cms.ts`, checked against the live collection schema. Empty fields are sent as `null`. `seller-phone` is `null` unless the contact method is Messages and phone. Title becomes `CLEAN - CA` (lien shows `CLEAN, LIEN - CA`). Owner count becomes `2 Owners`.
+- `publishListing()` creates the item with `POST /v2/collections/{id}/items/live`. `syncListing()` updates it with `PATCH .../items/{itemId}/live` for any listing already in the CMS (live, offer accepted, sold). Both retry on 429 (Retry-After) and 5xx.
+- Slugs: `{year}-{make}-{model}` slugified, checked against our DB and the CMS (`?slug=`), with a 4 character suffix on a clash. If Webflow still says the slug is taken, publishing retries once with a new suffix.
+- Approve requires the checklist to pass (admins can fix fields with Edit listing first). Request changes and Reject require a note of at least 10 characters. Only `submitted` listings can be decided. `approved` listings show the last publish error and a Retry publish button, and are listed at the top of the queue.
+- Admin edits on a listing that is in the CMS sync right away. Admins can also delete a photo.
+- Every admin action and CMS publish or sync (and failures, with the error) goes to `audit_log`, shown as History on the review screen.
+- `WEBFLOW_API_BASE` exists only to point tests at a fake API. Never set it in Webflow Cloud.
+
 ## Environment variables
 
 | Name | Secret | Purpose |

@@ -1,0 +1,514 @@
+---
+import { and, count, eq } from "drizzle-orm";
+import { env } from "cloudflare:workers";
+import Base from "../../../layouts/Base.astro";
+import Field from "../../../components/Field.astro";
+import Select from "../../../components/Select.astro";
+import TextArea from "../../../components/TextArea.astro";
+import Check from "../../../components/Check.astro";
+import Notice from "../../../components/Notice.astro";
+import StatusBadge from "../../../components/StatusBadge.astro";
+import { getDb } from "../../../db/client";
+import { listings, listingPhotos, profiles, user as users, type Listing } from "../../../db/schema";
+import { url, siteUrl } from "../../../lib/paths";
+import {
+  BODY_STYLES,
+  DRIVETRAINS,
+  TITLE_STATUSES,
+  TRANSMISSIONS,
+  US_STATES,
+  MIN_DESCRIPTION,
+} from "../../../lib/listing-options";
+import { checklist, listingTitle, parseStep, type ListingField } from "../../../lib/listing-rules";
+import { getPhotos, photoView } from "../../../lib/listings";
+import { publishListing, syncListing } from "../../../lib/cms";
+import { audit, auditFor } from "../../../lib/audit";
+import { notifySellerChanges, notifySellerLive, notifySellerRejected } from "../../../lib/notify";
+
+const admin = Astro.locals.user!;
+if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
+
+const id = Astro.params.id!;
+const db = getDb();
+const load = () => db.select().from(listings).where(eq(listings.id, id)).get();
+
+let listing = await load();
+if (!listing || listing.status === "draft") return Astro.rewrite(url("/404"));
+
+const IN_CMS = ["live", "offer_accepted", "sold"];
+const selfUrl = url(`/admin/listings/${id}`);
+
+let errors: Partial<Record<ListingField, string>> = {};
+let notesError = "";
+let actionError = "";
+let posted: Record<string, string> | null = null;
+
+async function sellerOf(l: Listing) {
+  const u = await db.select().from(users).where(eq(users.id, l.userId)).get();
+  return { email: u?.email ?? "", name: u?.name?.split(/\s+/)[0] ?? "there" };
+}
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  posted = {};
+  for (const [k, v] of form.entries()) if (typeof v === "string") posted[k] = v;
+  const intent = posted.intent;
+  const notes = (posted.notes ?? "").trim().slice(0, 4000);
+  const title = listingTitle(listing);
+
+  if (intent === "save") {
+    const data: Partial<Listing> = {};
+    for (const step of ["car", "history", "price"] as const) {
+      const r = parseStep(step, posted);
+      Object.assign(data, r.data);
+      Object.assign(errors, r.errors);
+    }
+    data.sellerType = posted.sellerType === "dealer" ? "dealer" : "private";
+    data.verifiedSeller = posted.verifiedSeller === "on";
+    data.featured = posted.featured === "on";
+    const changed = Object.keys(data).filter(
+      (k) => String(data[k as keyof Listing] ?? "") !== String(listing![k as keyof Listing] ?? ""),
+    );
+    if (changed.length) {
+      await db.update(listings).set({ ...data, updatedAt: new Date() }).where(eq(listings.id, id));
+      await audit(admin.id, "admin_edit", "listing", id, { fields: changed });
+    }
+    if (Object.keys(errors).length === 0) {
+      let q = "saved=1";
+      if (changed.length && IN_CMS.includes(listing.status)) {
+        const r = await syncListing(id, admin.id);
+        q = r.ok ? "saved=1&synced=1" : "saved=1&sync_failed=1";
+      }
+      return Astro.redirect(`${selfUrl}?${q}`, 303);
+    }
+  } else if (intent === "approve" || intent === "retry") {
+    if (intent === "approve") {
+      const issues = checklist(listing, (await getPhotos(id)).length);
+      if (listing.status !== "submitted") actionError = "Only listings in review can be approved.";
+      else if (issues.length) actionError = "This listing does not pass the checklist yet. Fix it with Edit listing, or request changes.";
+      else {
+        await db
+          .update(listings)
+          .set({ status: "approved", reviewerId: admin.id, reviewedAt: new Date(), reviewNotes: notes || null, updatedAt: new Date() })
+          .where(and(eq(listings.id, id), eq(listings.status, "submitted")));
+        await audit(admin.id, "approve", "listing", id, notes ? { notes } : undefined);
+      }
+    } else if (listing.status !== "approved") {
+      actionError = "Only approved listings can be retried.";
+    }
+
+    if (!actionError) {
+      const result = await publishListing(id, admin.id);
+      if (result.ok) {
+        await notifySellerLive(await sellerOf(listing), id, title, result.slug);
+        return Astro.redirect(`${selfUrl}?published=1`, 303);
+      }
+      return Astro.redirect(`${selfUrl}?publish_failed=1`, 303);
+    }
+  } else if (intent === "changes" || intent === "reject") {
+    if (notes.length < 10) {
+      notesError =
+        intent === "changes"
+          ? "Tell the seller what to change. They will see this note."
+          : "Tell the seller why. They will see this note.";
+    } else if (listing.status !== "submitted") {
+      actionError = "Only listings in review can be sent back or rejected.";
+    } else {
+      const status = intent === "changes" ? "changes_requested" : "rejected";
+      await db
+        .update(listings)
+        .set({ status, reviewNotes: notes, reviewerId: admin.id, reviewedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(listings.id, id), eq(listings.status, "submitted")));
+      await audit(admin.id, intent === "changes" ? "request_changes" : "reject", "listing", id, { notes });
+      const seller = await sellerOf(listing);
+      if (intent === "changes") await notifySellerChanges(seller, id, title, notes);
+      else await notifySellerRejected(seller, id, title, notes);
+      return Astro.redirect(`${url("/admin")}?done=${intent}`, 303);
+    }
+  } else if (intent === "delete-photo") {
+    const photo = await db
+      .select()
+      .from(listingPhotos)
+      .where(and(eq(listingPhotos.id, posted.photoId ?? ""), eq(listingPhotos.listingId, id)))
+      .get();
+    if (photo) {
+      await db.delete(listingPhotos).where(eq(listingPhotos.id, photo.id));
+      await env.PHOTOS.delete(photo.r2Key);
+      await audit(admin.id, "delete_photo", "listing", id, { photoId: photo.id });
+      if (IN_CMS.includes(listing.status)) await syncListing(id, admin.id);
+    }
+    return Astro.redirect(`${selfUrl}#photos`, 303);
+  }
+}
+
+listing = (await load())!;
+const photos = await getPhotos(id);
+const issues = checklist(listing, photos.length);
+const seller = await db.select().from(users).where(eq(users.id, listing.userId)).get();
+const sellerProfile = await db.select().from(profiles).where(eq(profiles.userId, listing.userId)).get();
+const sellerListings = (
+  await db.select({ n: count() }).from(listings).where(eq(listings.userId, listing.userId)).get()
+)?.n ?? 0;
+const history = await auditFor("listing", id, 30);
+const lastPublishError =
+  listing.status === "approved"
+    ? (history.find((h) => h.action === "cms_publish_failed")?.data as { error?: string } | null)?.error
+    : null;
+const cmsConfigured = Boolean(env.WEBFLOW_API_TOKEN && env.WEBFLOW_COLLECTION_ID);
+
+const v = (field: ListingField | "sellerType"): string => {
+  if (posted && posted.intent === "save" && field in posted) return posted[field];
+  const saved = listing![field as keyof Listing];
+  return saved === null || saved === undefined ? "" : String(saved);
+};
+const on = (field: keyof Listing) =>
+  posted && posted.intent === "save" ? posted[field] === "on" : Boolean(listing![field]);
+const params = Astro.url.searchParams;
+const canDecide = listing.status === "submitted";
+const title = listingTitle(listing);
+const fmtDate = (d: Date | null | undefined) =>
+  d ? d.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Los_Angeles" }) : "";
+---
+
+<Base title={`Review: ${title}`}>
+  <p class="label"><a href={url("/admin")}>Review queue</a></p>
+  <div class="head">
+    <h1 class="page-title">{title}</h1>
+    <StatusBadge status={listing.status} />
+  </div>
+
+  {params.get("published") && (
+    <Notice tone="ok"><p>Published. <a href={siteUrl(`/listings/${listing.slug}`)}>View it on the site</a>. The seller was emailed.</p></Notice>
+  )}
+  {params.get("publish_failed") && (
+    <Notice tone="error"><p>Approved, but publishing to Webflow failed. The error is below. Fix it and retry.</p></Notice>
+  )}
+  {params.get("saved") && <Notice tone="ok"><p>Changes saved{params.get("synced") ? " and synced to the site" : ""}.</p></Notice>}
+  {params.get("sync_failed") && <Notice tone="error"><p>Saved here, but the Webflow update failed. See the history below.</p></Notice>}
+  {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
+  {Object.keys(errors).length > 0 && <Notice tone="error"><p>Some fields need fixing. Everything else was saved.</p></Notice>}
+  {!cmsConfigured && <Notice tone="error"><p>WEBFLOW_API_TOKEN or WEBFLOW_COLLECTION_ID is not set, so publishing will fail.</p></Notice>}
+
+  <div class="layout">
+    <div class="main">
+      <section class="card" aria-labelledby="check-h">
+        <h2 id="check-h">Checklist</h2>
+        {
+          issues.length === 0 ? (
+            <p class="ok">Passes every automatic check.</p>
+          ) : (
+            <ul class="issues">{issues.map((i) => <li>{i.message}</li>)}</ul>
+          )
+        }
+        <p class="muted">Your call: is it an enthusiast car, are the photos honest, does the price make sense?</p>
+      </section>
+
+      <section class="card" id="photos" aria-labelledby="photos-h">
+        <h2 id="photos-h">Photos ({photos.length})</h2>
+        <ol class="grid">
+          {
+            photos.map((p, i) => (
+              <li>
+                <a href={photoView(p).url} target="_blank" rel="noopener">
+                  <img src={photoView(p).url} alt={`Photo ${i + 1}`} loading="lazy" />
+                </a>
+                <span class="n">{i === 0 ? "Main" : i + 1}</span>
+                <form method="post" onsubmit="return confirm('Delete this photo? The seller will not be told.')">
+                  <input type="hidden" name="intent" value="delete-photo" />
+                  <input type="hidden" name="photoId" value={p.id} />
+                  <button type="submit" class="del" aria-label={`Delete photo ${i + 1}`}>✕</button>
+                </form>
+              </li>
+            ))
+          }
+        </ol>
+      </section>
+
+      <section class="card" aria-labelledby="story-h">
+        <h2 id="story-h">What the seller wrote</h2>
+        {listing.headline && <p class="headline">{listing.headline}</p>}
+        <h3>Description</h3><p class="pre">{listing.description}</p>
+        <h3>Known issues</h3><p class="pre">{listing.knownIssues}</p>
+        {listing.highlights && (<><h3>Highlights</h3><p class="pre">{listing.highlights}</p></>)}
+        {listing.modifications && (<><h3>Modifications</h3><p class="pre">{listing.modifications}</p></>)}
+        {listing.serviceHistory && (<><h3>Service history</h3><p class="pre">{listing.serviceHistory}</p></>)}
+        {listing.videoUrl && (<><h3>Video</h3><p><a href={listing.videoUrl} target="_blank" rel="noopener">{listing.videoUrl}</a></p></>)}
+      </section>
+
+      <details class="card edit" open={Object.keys(errors).length > 0}>
+        <summary><h2>Edit listing</h2></summary>
+        <form method="post" novalidate>
+          <input type="hidden" name="intent" value="save" />
+          <div class="field-row field-row--3">
+            <Field name="year" label="Year" inputmode="numeric" value={v("year")} error={errors.year} maxlength={4} required={false} />
+            <Field name="make" label="Make" value={v("make")} error={errors.make} maxlength={40} required={false} />
+            <Field name="model" label="Model" value={v("model")} error={errors.model} maxlength={60} required={false} />
+          </div>
+          <Field name="headline" label="Headline" value={v("headline")} error={errors.headline} maxlength={90} required={false} />
+          <div class="field-row">
+            <Field name="mileage" label="Mileage" inputmode="numeric" value={v("mileage")} error={errors.mileage} required={false} />
+            <Field name="vin" label="VIN" value={v("vin")} error={errors.vin} maxlength={20} required={false} />
+          </div>
+          <div class="field-row field-row--3">
+            <Select name="transmission" label="Transmission" options={TRANSMISSIONS} value={v("transmission")} error={errors.transmission} />
+            <Select name="drivetrain" label="Drivetrain" options={DRIVETRAINS} value={v("drivetrain")} error={errors.drivetrain} />
+            <Select name="bodyStyle" label="Body style" options={BODY_STYLES} value={v("bodyStyle")} error={errors.bodyStyle} />
+          </div>
+          <div class="field-row field-row--3">
+            <Field name="engine" label="Engine" value={v("engine")} error={errors.engine} maxlength={60} required={false} />
+            <Field name="exteriorColor" label="Exterior color" value={v("exteriorColor")} error={errors.exteriorColor} maxlength={40} required={false} />
+            <Field name="interiorColor" label="Interior color" value={v("interiorColor")} error={errors.interiorColor} maxlength={40} required={false} />
+          </div>
+          <TextArea name="description" label="Description" value={v("description")} error={errors.description} maxlength={8000} rows={8} counter={MIN_DESCRIPTION} />
+          <TextArea name="highlights" label="Highlights" value={v("highlights")} error={errors.highlights} maxlength={3000} rows={4} hint="One per line" />
+          <TextArea name="knownIssues" label="Known issues" value={v("knownIssues")} error={errors.knownIssues} maxlength={3000} rows={4} hint="One per line" />
+          <TextArea name="modifications" label="Modifications" value={v("modifications")} error={errors.modifications} maxlength={3000} rows={3} hint="One per line" />
+          <TextArea name="serviceHistory" label="Service history" value={v("serviceHistory")} error={errors.serviceHistory} maxlength={6000} rows={4} />
+          <div class="field-row field-row--3">
+            <Field name="ownerCount" label="Owners" inputmode="numeric" value={v("ownerCount")} error={errors.ownerCount} required={false} />
+            <Select name="titleStatus" label="Title status" options={TITLE_STATUSES} value={v("titleStatus")} error={errors.titleStatus} />
+            <Select name="titleState" label="Title state" options={US_STATES} value={v("titleState")} error={errors.titleState} placeholder="State" />
+          </div>
+          <Field name="videoUrl" label="Video link" type="url" value={v("videoUrl")} error={errors.videoUrl} maxlength={300} required={false} />
+          <div class="field-row field-row--3">
+            <Field name="price" label="Price" inputmode="numeric" value={v("price")} error={errors.price} required={false} />
+            <Field name="locationCity" label="City" value={v("locationCity")} error={errors.locationCity} maxlength={60} required={false} />
+            <Select name="locationState" label="State" options={US_STATES} value={v("locationState")} error={errors.locationState} placeholder="State" />
+          </div>
+          <div class="field-row">
+            <Select name="contactMethod" label="Contact method" options={[{ value: "messages", label: "Messages only" }, { value: "messages_phone", label: "Messages and phone" }]} value={v("contactMethod")} placeholder="Messages only" />
+            <Field name="contactPhone" label="Phone" type="tel" value={v("contactPhone")} error={errors.contactPhone} maxlength={25} required={false} />
+          </div>
+          <Check name="acceptsOffers" label="Accepts offers" checked={on("acceptsOffers")} />
+          <Check name="recordsOnFile" label="Records on file (confirmed)" checked={on("recordsOnFile")} />
+          <Select name="sellerType" label="Seller type" options={[{ value: "private", label: "Private Party" }, { value: "dealer", label: "Specialty Dealer" }]} value={v("sellerType")} placeholder="Private Party" />
+          <Check name="verifiedSeller" label="Verified seller" checked={on("verifiedSeller")} />
+          <Check name="featured" label="Featured" checked={on("featured")} />
+          <button class="btn btn--secondary" type="submit">Save changes</button>
+        </form>
+      </details>
+    </div>
+
+    <aside class="side">
+      <section class="card decide" aria-labelledby="decide-h">
+        <h2 id="decide-h">Decision</h2>
+        {
+          listing.status === "approved" && (
+            <>
+              <Notice tone="error">
+                <p><strong>Publishing failed.</strong></p>
+                {lastPublishError && <p class="err">{lastPublishError}</p>}
+              </Notice>
+              <form method="post">
+                <input type="hidden" name="intent" value="retry" />
+                <button class="btn" type="submit">Retry publish</button>
+              </form>
+            </>
+          )
+        }
+        {
+          canDecide ? (
+            <form method="post" novalidate>
+              <div class="field">
+                <label for="f-notes">Note to the seller</label>
+                <span class="hint">Required for changes and rejections. The seller sees it exactly as written.</span>
+                <textarea id="f-notes" name="notes" rows="6" maxlength="4000" aria-invalid={notesError ? "true" : undefined}>{posted?.notes ?? ""}</textarea>
+                {notesError && <span class="error">{notesError}</span>}
+              </div>
+              <div class="buttons">
+                <button class="btn" type="submit" name="intent" value="approve" disabled={issues.length > 0}>Approve and publish</button>
+                <button class="btn btn--secondary" type="submit" name="intent" value="changes">Request changes</button>
+                <button class="btn btn--secondary reject" type="submit" name="intent" value="reject">Reject</button>
+              </div>
+            </form>
+          ) : (
+            listing.status !== "approved" && <p class="muted">No decision needed. This listing is {listing.status.replace("_", " ")}.</p>
+          )
+        }
+        {listing.slug && IN_CMS.includes(listing.status) && (
+          <p><a href={siteUrl(`/listings/${listing.slug}`)}>View on the site</a></p>
+        )}
+      </section>
+
+      <section class="card" aria-labelledby="seller-h">
+        <h2 id="seller-h">Seller</h2>
+        <div class="spec-row"><span>Name</span><span>{seller?.name}</span></div>
+        <div class="spec-row"><span>Shows as</span><span>{sellerProfile?.displayName}</span></div>
+        <div class="spec-row"><span>Email</span><span>{seller?.email}</span></div>
+        <div class="spec-row"><span>Verified</span><span>{seller?.emailVerified ? "Yes" : "No"}</span></div>
+        <div class="spec-row"><span>Joined</span><span>{fmtDate(seller?.createdAt)}</span></div>
+        <div class="spec-row"><span>Listings</span><span>{sellerListings}</span></div>
+      </section>
+
+      <section class="card" aria-labelledby="hist-h">
+        <h2 id="hist-h">History</h2>
+        <ul class="history">
+          <li><span class="label">{fmtDate(listing.submittedAt)}</span> Submitted</li>
+          {
+            history
+              .slice()
+              .reverse()
+              .map((h) => (
+                <li>
+                  <span class="label">{fmtDate(h.createdAt)}</span> {h.action.replace(/_/g, " ")}
+                  {h.data && (h.data as any).error && <span class="err"> {(h.data as any).error}</span>}
+                  {h.data && (h.data as any).fields && <span class="muted"> {(h.data as any).fields.join(", ")}</span>}
+                </li>
+              ))
+          }
+        </ul>
+      </section>
+    </aside>
+  </div>
+</Base>
+
+<style>
+  .label a {
+    color: var(--muted);
+  }
+  .head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .head h1 {
+    margin: 0;
+  }
+  .layout {
+    display: grid;
+    gap: 20px;
+  }
+  @media (min-width: 960px) {
+    .layout {
+      grid-template-columns: minmax(0, 1fr) 360px;
+      align-items: start;
+    }
+    .side {
+      position: sticky;
+      top: 16px;
+    }
+  }
+  .main,
+  .side {
+    display: grid;
+    gap: 20px;
+    min-width: 0;
+  }
+  h2 {
+    font-size: 20px;
+  }
+  h3 {
+    font-size: 15px;
+    margin: 18px 0 6px;
+  }
+  .ok {
+    color: var(--ok);
+    font-weight: 700;
+  }
+  .issues {
+    color: var(--red);
+    font-weight: 600;
+    padding-left: 20px;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .pre {
+    white-space: pre-wrap;
+    margin: 0;
+  }
+  .headline {
+    font-weight: 700;
+    font-size: 18px;
+  }
+  .grid {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 6px;
+  }
+  .grid li {
+    position: relative;
+  }
+  .grid img {
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 6px;
+    width: 100%;
+  }
+  .grid .n {
+    position: absolute;
+    top: 4px;
+    left: 4px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    background: rgba(21, 23, 27, 0.8);
+    color: #fff;
+    padding: 2px 6px;
+    border-radius: 999px;
+  }
+  .grid form {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    margin: 0;
+  }
+  .del {
+    width: 32px;
+    height: 32px;
+    border: 0;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.9);
+    cursor: pointer;
+  }
+  .edit summary {
+    cursor: pointer;
+    list-style: none;
+    min-height: var(--tap);
+    display: flex;
+    align-items: center;
+  }
+  .edit summary h2 {
+    margin: 0;
+  }
+  .edit summary::after {
+    content: "▾";
+    margin-left: 8px;
+  }
+  .edit form {
+    margin-top: 16px;
+  }
+  .buttons {
+    display: grid;
+    gap: 10px;
+  }
+  .reject {
+    color: var(--red);
+    border-color: var(--red);
+  }
+  .err {
+    color: var(--red);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    word-break: break-word;
+  }
+  .history {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 8px;
+    font-size: 14px;
+  }
+  .history .label {
+    display: block;
+  }
+  .side .spec-row > :last-child {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+</style>

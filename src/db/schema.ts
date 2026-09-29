@@ -126,3 +126,20 @@ export const listingPhotos = sqliteTable(
 );
 
 export type ListingPhoto = typeof listingPhotos.$inferSelect;
+
+// Every admin action and every CMS publish is logged here.
+export const auditLog = sqliteTable(
+  "audit_log",
+  {
+    id: text("id").primaryKey(),
+    actorId: text("actor_id"),
+    action: text("action").notNull(),
+    entity: text("entity").notNull(),
+    entityId: text("entity_id").notNull(),
+    data: text("data", { mode: "json" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [index("audit_entity_idx").on(t.entity, t.entityId, t.createdAt)],
+);
+
+export type AuditEntry = typeof auditLog.$inferSelect;

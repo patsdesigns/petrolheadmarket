@@ -15,6 +15,13 @@
       "when": 1790704991056,
       "tag": "0001_absent_shocker",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790705799288,
+      "tag": "0002_white_celestials",
+      "breakpoints": true
     }
   ]
 }

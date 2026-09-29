@@ -1,0 +1,202 @@
+---
+import { asc, desc, eq, inArray, count } from "drizzle-orm";
+import Base from "../../layouts/Base.astro";
+import StatusBadge from "../../components/StatusBadge.astro";
+import { getDb } from "../../db/client";
+import { listings, listingPhotos, profiles } from "../../db/schema";
+import { url } from "../../lib/paths";
+import { formatPrice, listingTitle } from "../../lib/listing-rules";
+
+// Middleware already limits /app/admin to admins; check again here.
+if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
+
+const db = getDb();
+const rows = await db
+  .select({
+    id: listings.id,
+    status: listings.status,
+    year: listings.year,
+    make: listings.make,
+    model: listings.model,
+    price: listings.price,
+    submittedAt: listings.submittedAt,
+    updatedAt: listings.updatedAt,
+    seller: profiles.displayName,
+  })
+  .from(listings)
+  .leftJoin(profiles, eq(profiles.userId, listings.userId))
+  .where(inArray(listings.status, ["submitted", "approved"]))
+  .orderBy(asc(listings.submittedAt))
+  .all();
+
+const photoCounts = new Map(
+  (
+    await db
+      .select({ id: listingPhotos.listingId, n: count() })
+      .from(listingPhotos)
+      .groupBy(listingPhotos.listingId)
+      .all()
+  ).map((r) => [r.id, r.n]),
+);
+
+const queue = rows.filter((r) => r.status === "submitted");
+const stuck = rows.filter((r) => r.status === "approved");
+
+const recent = await db
+  .select({ id: listings.id, status: listings.status, year: listings.year, make: listings.make, model: listings.model, reviewedAt: listings.reviewedAt })
+  .from(listings)
+  .where(inArray(listings.status, ["live", "changes_requested", "rejected", "offer_accepted", "sold"]))
+  .orderBy(desc(listings.reviewedAt))
+  .limit(10)
+  .all();
+
+const waited = (d: Date | null) => {
+  if (!d) return "";
+  const hours = Math.floor((Date.now() - d.getTime()) / 3_600_000);
+  return hours < 1 ? "under an hour" : hours < 48 ? `${hours}h` : `${Math.floor(hours / 24)}d`;
+};
+---
+
+<Base title="Review queue">
+  <nav class="admin-nav" aria-label="Admin">
+    <a href={url("/admin")} aria-current="page">Review queue</a>
+    <a href={url("/admin/flags")}>Flagged messages</a>
+  </nav>
+  <h1 class="page-title">Review queue</h1>
+  <p class="lede">{queue.length === 0 ? "Nothing waiting. Nice." : `${queue.length} waiting, oldest first.`}</p>
+
+  {
+    stuck.length > 0 && (
+      <section class="card warn">
+        <h2>Approved but not published</h2>
+        <p class="muted">Publishing to Webflow failed. Open each one to see the error and retry.</p>
+        <ul class="rows">
+          {stuck.map((r) => (
+            <li class="spec-row">
+              <a href={url(`/admin/listings/${r.id}`)}>{listingTitle(r)}</a>
+              <StatusBadge status={r.status} />
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    queue.length > 0 && (
+      <ol class="queue">
+        {queue.map((r) => (
+          <li class="card item">
+            <a href={url(`/admin/listings/${r.id}`)}>
+              <strong>{listingTitle(r)}</strong>
+              <span class="meta">
+                <span class="price">{formatPrice(r.price)}</span>
+                <span>{photoCounts.get(r.id) ?? 0} photos</span>
+                <span>{r.seller}</span>
+                <span>Waiting {waited(r.submittedAt)}</span>
+              </span>
+            </a>
+          </li>
+        ))}
+      </ol>
+    )
+  }
+
+  {
+    recent.length > 0 && (
+      <section class="recent">
+        <h2 class="label">Recently reviewed</h2>
+        <ul class="rows">
+          {recent.map((r) => (
+            <li class="spec-row">
+              <a href={url(`/admin/listings/${r.id}`)}>{listingTitle(r)}</a>
+              <StatusBadge status={r.status} />
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+</Base>
+
+<style>
+  .admin-nav {
+    display: flex;
+    gap: 18px;
+    margin-bottom: 16px;
+    font-weight: 700;
+  }
+  .admin-nav a {
+    color: var(--muted);
+    text-decoration: none;
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+  }
+  .admin-nav a[aria-current] {
+    color: var(--ink);
+    box-shadow: inset 0 -3px 0 var(--red);
+  }
+  .warn {
+    border-color: var(--red);
+    margin-bottom: 20px;
+  }
+  .warn h2 {
+    font-size: 20px;
+  }
+  .queue {
+    list-style: none;
+    padding: 0;
+    margin: 0 0 32px;
+    display: grid;
+    gap: 10px;
+    max-width: 760px;
+  }
+  .item {
+    padding: 0;
+  }
+  .item a {
+    display: grid;
+    gap: 6px;
+    padding: 16px 18px;
+    color: inherit;
+    text-decoration: none;
+  }
+  .item a:hover strong {
+    text-decoration: underline;
+  }
+  .item strong {
+    font-size: 18px;
+  }
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .meta .price {
+    color: var(--ink);
+  }
+  .rows {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-width: 760px;
+  }
+  .rows .spec-row > :first-child {
+    font-family: inherit;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 16px;
+    color: var(--ink);
+    white-space: normal;
+    flex: 1;
+  }
+  .muted {
+    color: var(--muted);
+  }
+</style>

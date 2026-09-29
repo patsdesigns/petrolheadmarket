@@ -13,6 +13,8 @@ declare namespace Cloudflare {
     EMAIL_FROM?: string;
     ADMIN_EMAILS?: string;
     PUBLIC_SITE_URL?: string;
+    /** Local tests only: point the Webflow client at a fake API. */
+    WEBFLOW_API_BASE?: string;
   }
 }
 
