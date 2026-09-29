@@ -1,0 +1,114 @@
+---
+import Base from "./Base.astro";
+
+interface Props {
+  title: string;
+  lede?: string;
+}
+const { title, lede } = Astro.props;
+---
+
+<Base title={title}>
+  <div class="auth">
+    <aside class="auth__brand" aria-hidden="true">
+      <p class="label auth__kicker">Petrol Head Market</p>
+      <p class="auth__big">Enthusiast cars, sold by the people who drove them.</p>
+      <ul class="auth__points">
+        <li><span>01</span> Every listing is reviewed by a person before it goes live.</li>
+        <li><span>02</span> Fixed prices and offers. No auctions, no junk cars.</li>
+        <li><span>03</span> Message sellers here. Your email and phone stay private.</li>
+      </ul>
+    </aside>
+    <div class="auth__form">
+      <h1 class="page-title">{title}</h1>
+      {lede && <p class="lede">{lede}</p>}
+      <div class="card auth__card">
+        <slot />
+      </div>
+      <div class="auth__after">
+        <slot name="after" />
+      </div>
+    </div>
+  </div>
+</Base>
+
+<style>
+  /* Desktop: brand panel on the left, form on the right. */
+  .auth {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 480px);
+    gap: 64px;
+    align-items: start;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .auth__brand {
+    position: sticky;
+    top: 24px;
+    padding: 40px;
+    border-radius: var(--radius-card);
+    background: var(--ink);
+    color: var(--white);
+    min-height: 480px;
+    display: flex;
+    flex-direction: column;
+  }
+  .auth__kicker {
+    color: rgba(255, 255, 255, 0.6);
+    margin: 0 0 20px;
+  }
+  .auth__big {
+    font-size: 40px;
+    font-weight: 900;
+    line-height: 1.05;
+    text-transform: uppercase;
+    margin: 0 0 auto;
+    max-width: 14ch;
+  }
+  .auth__points {
+    list-style: none;
+    padding: 0;
+    margin: 40px 0 0;
+    display: grid;
+    gap: 14px;
+  }
+  .auth__points li {
+    display: grid;
+    grid-template-columns: 36px 1fr;
+    gap: 10px;
+    padding-top: 14px;
+    border-top: 1px dashed rgba(255, 255, 255, 0.25);
+  }
+  .auth__points span {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--red);
+    letter-spacing: 0.12em;
+    padding-top: 3px;
+  }
+  .auth__card :global(.btn) {
+    width: 100%;
+  }
+  .auth__after {
+    margin-top: 16px;
+    color: var(--muted);
+    text-align: center;
+  }
+  .auth__after :global(p) {
+    margin: 8px 0;
+  }
+  .auth__after :global(a) {
+    color: var(--ink);
+    font-weight: 700;
+  }
+  @media (max-width: 900px) {
+    .auth {
+      grid-template-columns: 1fr;
+      max-width: 480px;
+      gap: 0;
+    }
+    .auth__brand {
+      display: none;
+    }
+  }
+</style>

@@ -1,0 +1,11 @@
+---
+import { STATUS_LABELS } from "../lib/listing-options";
+interface Props {
+  status: string;
+}
+const { status } = Astro.props;
+const tone =
+  status === "live" || status === "offer_accepted" ? "badge--ok" : status === "changes_requested" || status === "rejected" ? "badge--red" : "";
+---
+
+<span class:list={["badge", tone]}>{STATUS_LABELS[status] ?? status}</span>

@@ -1,0 +1,358 @@
+---
+import { and, eq } from "drizzle-orm";
+import Base from "../../../layouts/Base.astro";
+import Notice from "../../../components/Notice.astro";
+import { getDb } from "../../../db/client";
+import { listings } from "../../../db/schema";
+import { url, siteUrl } from "../../../lib/paths";
+import { BODY_STYLES, DRIVETRAINS, TITLE_STATUSES, TRANSMISSIONS, STATUS_LABELS, optionLabel } from "../../../lib/listing-options";
+import { formatMiles, formatPrice, listingTitle } from "../../../lib/listing-rules";
+import { deleteDraft, getOwnListing, getPhotos, isEditable, photoView } from "../../../lib/listings";
+import { markSold, quickEdit, relist } from "../../../lib/seller-actions";
+import Field from "../../../components/Field.astro";
+import Check from "../../../components/Check.astro";
+
+const user = Astro.locals.user!;
+const id = Astro.params.id!;
+
+let listing = await getOwnListing(user.id, id);
+if (!listing) return Astro.rewrite(url("/404"));
+
+let quickErrors: Record<string, string> = {};
+let posted: Record<string, string> | null = null;
+let actionError = "";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  posted = {};
+  for (const [k, v] of form.entries()) if (typeof v === "string") posted[k] = v;
+  const intent = posted.intent ?? "";
+  if (intent === "quick") {
+    const r = await quickEdit(listing, posted);
+    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${r.synced ? "updated=1" : "sync_failed=1"}`, 303);
+    quickErrors = r.errors ?? {};
+    actionError = r.error ?? "";
+  }
+  if (intent === "sold" || intent === "relist") {
+    const r = intent === "sold" ? await markSold(listing) : await relist(listing);
+    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${r.synced ? intent : "sync_failed=1"}`, 303);
+    actionError = r.error ?? "";
+  }
+  if (intent === "delete") {
+    await deleteDraft(user.id, id);
+    return Astro.redirect(`${url("/")}?notice=deleted`, 303);
+  }
+  if (intent === "unsubmit" && listing.status === "submitted") {
+    // Pull it back out of the review queue to make changes.
+    await getDb()
+      .update(listings)
+      .set({ status: "draft", submittedAt: null, updatedAt: new Date() })
+      .where(and(eq(listings.id, id), eq(listings.userId, user.id), eq(listings.status, "submitted")));
+    return Astro.redirect(`${url(`/listings/${id}/edit`)}?step=review`, 303);
+  }
+  if (!actionError && Object.keys(quickErrors).length === 0) return Astro.redirect(url(`/listings/${id}`), 303);
+}
+
+const photos = await getPhotos(id);
+const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
+const title = listingTitle(listing);
+const editUrl = url(`/listings/${id}/edit`);
+const publicUrl = listing.slug ? siteUrl(`/listings/${listing.slug}`) : null;
+
+const explain: Record<string, string> = {
+  draft: "Only you can see this draft. Finish the steps and submit it for review.",
+  submitted: "Our team is reviewing your listing. This usually takes less than a day. We will email you.",
+  changes_requested: "Our reviewer asked for a few changes. Update the listing and submit it again.",
+  approved: "Approved. It is being published now.",
+  live: "Your listing is live on Petrol Head Market.",
+  offer_accepted: "You accepted an offer. Mark it as sold when the deal is done.",
+  sold: "Sold. Congratulations.",
+  rejected: "This listing was not accepted.",
+  withdrawn: "You took this listing down.",
+};
+---
+
+<Base title={title}>
+  <a class="back" href={url("/")}>← My garage</a>
+  <p class="eyebrow">
+    <span>{STATUS_LABELS[listing.status]}</span>
+    {location && <span>{location}</span>}
+    <span>{photos.length} photos</span>
+  </p>
+  <h1 class="car-title">{title}</h1>
+  {listing.headline && <p class="lede">{listing.headline}</p>}
+
+  {Astro.url.searchParams.get("submitted") && (
+    <Notice tone="ok"><p>Submitted for review. We will email you when it is live or if anything needs changing.</p></Notice>
+  )}
+  {Astro.url.searchParams.get("updated") && <Notice tone="ok"><p>Saved. The public listing is updated.</p></Notice>}
+  {Astro.url.searchParams.get("sold") && <Notice tone="ok"><p>Marked as sold. Congratulations.</p></Notice>}
+  {Astro.url.searchParams.get("relist") && <Notice tone="ok"><p>Your car is back on sale.</p></Notice>}
+  {Astro.url.searchParams.get("sync_failed") && (
+    <Notice tone="error"><p>Saved here, but the public listing did not update. We have been told and will fix it. You can also try saving again.</p></Notice>
+  )}
+  {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
+
+  <div class="with-side layout">
+    <div class="main">
+      <div class:list={["hero", { stripes: photos.length === 0 }]}>
+        {photos[0] ? <img src={photoView(photos[0]).url} alt={`${title}, main photo`} /> : <span class="hero__none">No photos yet</span>}
+        <span class="hero__tag">{STATUS_LABELS[listing.status]}</span>
+      </div>
+      {photos.length > 1 && (
+        <div class="thumbs">
+          {photos.slice(1, 9).map((p, i) => (
+            <img src={photoView(p).url} alt={`Photo ${i + 2}`} loading="lazy" />
+          ))}
+        </div>
+      )}
+      {photos.length > 9 && <p class="muted small">And {photos.length - 9} more photos.</p>}
+
+      <div class="facts">
+        <div class="fact"><div class="fact__label">Mileage</div><div class="fact__val">{formatMiles(listing.mileage) || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Transmission</div><div class="fact__val">{optionLabel(TRANSMISSIONS, listing.transmission) || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Drivetrain</div><div class="fact__val">{optionLabel(DRIVETRAINS, listing.drivetrain) || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Body</div><div class="fact__val">{optionLabel(BODY_STYLES, listing.bodyStyle) || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Engine</div><div class="fact__val">{listing.engine || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Title</div><div class="fact__val">{[optionLabel(TITLE_STATUSES, listing.titleStatus), listing.titleState].filter(Boolean).join(", ") || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Exterior</div><div class="fact__val">{listing.exteriorColor || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Interior</div><div class="fact__val">{listing.interiorColor || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">VIN</div><div class="fact__val mono">{listing.vin || "Not set"}</div></div>
+      </div>
+
+      {
+        (listing.status === "live" || listing.status === "offer_accepted") && (
+          <section class="card quick" aria-labelledby="quick-h">
+            <h2 id="quick-h">Quick changes</h2>
+            <p class="muted">These update the public listing right away. For any other change, reply to the email you got when your listing went live and our team will make it.</p>
+            <form method="post" novalidate>
+              <input type="hidden" name="intent" value="quick" />
+              <div class="field-row">
+                <Field name="price" label="Asking price" inputmode="numeric" maxlength={12}
+                  value={posted?.intent === "quick" ? posted.price : String(listing.price ?? "")} error={quickErrors.price} />
+                <Field name="contactPhone" label="Phone" type="tel" inputmode="tel" required={false} maxlength={25}
+                  value={posted?.intent === "quick" ? posted.contactPhone : (listing.contactPhone ?? "")} error={quickErrors.contactPhone} />
+              </div>
+              <Check name="acceptsOffers" label="Accept offers"
+                checked={posted?.intent === "quick" ? posted.acceptsOffers === "on" : listing.acceptsOffers} />
+              <fieldset>
+                <legend>How buyers can reach you</legend>
+                <label class="radio">
+                  <input type="radio" name="contactMethod" value="messages" checked={(posted?.intent === "quick" ? posted.contactMethod : listing.contactMethod) !== "messages_phone"} />
+                  <span>Messages only</span>
+                </label>
+                <label class="radio">
+                  <input type="radio" name="contactMethod" value="messages_phone" checked={(posted?.intent === "quick" ? posted.contactMethod : listing.contactMethod) === "messages_phone"} />
+                  <span>Messages and phone<small>Your phone number is shown on the listing page.</small></span>
+                </label>
+              </fieldset>
+              <button class="btn" type="submit">Save changes</button>
+            </form>
+          </section>
+        )
+      }
+    </div>
+
+    <aside>
+      <div class="card buy">
+        <div class="buy__label">Asking price</div>
+        <div class="buy__price">{formatPrice(listing.price) || "Not set"}</div>
+        {listing.acceptsOffers && listing.status === "live" && <span class="badge badge--ok offer-flag">Accepting offers</span>}
+        <p class="status-note">{explain[listing.status]}</p>
+
+        {
+          listing.reviewNotes && (listing.status === "changes_requested" || listing.status === "rejected") && (
+            <div class="notes">
+              <div class="buy__label">Notes from our reviewer</div>
+              <p class="pre">{listing.reviewNotes}</p>
+            </div>
+          )
+        }
+
+        {isEditable(listing) && <a class="btn block" href={editUrl}>{listing.status === "draft" ? "Continue editing" : "Make changes"}</a>}
+        {publicUrl && <a class="btn btn--secondary block" href={publicUrl}>View public listing</a>}
+        {
+          listing.status === "submitted" && (
+            <form method="post">
+              <input type="hidden" name="intent" value="unsubmit" />
+              <button class="btn btn--secondary block" type="submit">Move back to draft</button>
+            </form>
+          )
+        }
+        {
+          (listing.status === "live" || listing.status === "offer_accepted") && (
+            <>
+              <form method="post" onsubmit="return confirm('Mark this car as sold? Open offers will be closed.')">
+                <input type="hidden" name="intent" value="sold" />
+                <button class="btn block" type="submit">Mark as sold</button>
+              </form>
+              {listing.status === "offer_accepted" && (
+                <form method="post" onsubmit="return confirm('Put this car back on sale? The accepted deal will be cancelled.')">
+                  <input type="hidden" name="intent" value="relist" />
+                  <button class="btn btn--secondary block" type="submit">Put back on sale</button>
+                </form>
+              )}
+              <div class="links">
+                <a href={url("/offers")}>See offers</a>
+                <a href={url("/inbox")}>See messages</a>
+              </div>
+            </>
+          )
+        }
+      </div>
+
+      <div class="trust">
+        <p class="trust__title">{listing.status === "offer_accepted" ? "Closing the deal" : "How it works"}</p>
+        <p>
+          {listing.status === "offer_accepted"
+            ? "Meet the buyer, let them inspect the car, and take payment before you sign over the title. Mark it as sold when you are done, or put it back on sale if the deal falls through."
+            : "A person reviews every listing before it goes live. Buyers message you here or make offers, and you choose what to accept."}
+        </p>
+      </div>
+
+      {
+        listing.status === "draft" && (
+          <form method="post" class="danger" onsubmit="return confirm('Delete this draft and its photos? This cannot be undone.')">
+            <input type="hidden" name="intent" value="delete" />
+            <button class="linkish" type="submit">Delete this draft</button>
+          </form>
+        )
+      }
+    </aside>
+  </div>
+</Base>
+
+<style>
+  .lede {
+    margin-bottom: 20px;
+  }
+  .layout {
+    margin-top: 8px;
+  }
+  .main {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+  }
+  /* phl-hero */
+  .hero {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+  }
+  .hero img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .hero__none {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  /* phl-hero-tag */
+  .hero__tag {
+    position: absolute;
+    top: 16px;
+    left: 0;
+    padding: 5px 12px 5px 14px;
+    border-radius: 0 4px 4px 0;
+    background: var(--red);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .thumbs {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .thumbs img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 6px;
+  }
+  @media (max-width: 720px) {
+    .thumbs {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .buy {
+    display: grid;
+    gap: 10px;
+  }
+  .offer-flag {
+    justify-self: start;
+  }
+  .status-note {
+    margin: 4px 0 6px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .notes {
+    padding: 10px 12px;
+    border-left: 4px solid var(--red);
+    background: var(--paper);
+  }
+  .notes p {
+    margin: 4px 0 0;
+  }
+  .block {
+    width: 100%;
+  }
+  .buy form {
+    margin: 0;
+  }
+  .links {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .links a {
+    color: var(--ink);
+  }
+  .pre {
+    white-space: pre-wrap;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .small {
+    font-size: 14px;
+    margin: 0;
+  }
+  .danger {
+    text-align: center;
+  }
+  .linkish {
+    border: 0;
+    background: none;
+    color: var(--red);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    min-height: var(--tap);
+    cursor: pointer;
+    padding: 0;
+  }
+</style>

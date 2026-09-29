@@ -1,0 +1,701 @@
+---
+import { and, eq, inArray } from "drizzle-orm";
+import Base from "../../../layouts/Base.astro";
+import Field from "../../../components/Field.astro";
+import Select from "../../../components/Select.astro";
+import TextArea from "../../../components/TextArea.astro";
+import Check from "../../../components/Check.astro";
+import Notice from "../../../components/Notice.astro";
+import PhotoUploader from "../../../components/PhotoUploader.tsx";
+import "../../../styles/uploader.css";
+import { getDb } from "../../../db/client";
+import { listings } from "../../../db/schema";
+import { url } from "../../../lib/paths";
+import {
+  BODY_STYLES,
+  DRIVETRAINS,
+  TITLE_STATUSES,
+  TRANSMISSIONS,
+  US_STATES,
+  EDITABLE_STATUSES,
+  MIN_DESCRIPTION,
+  MIN_PHOTOS,
+  MAX_PHOTOS,
+  optionLabel,
+} from "../../../lib/listing-options";
+import {
+  STEPS,
+  checklist,
+  formatMiles,
+  formatPrice,
+  listingTitle,
+  parseStep,
+  type ListingField,
+  type StepKey,
+} from "../../../lib/listing-rules";
+import { getOwnListing, getPhotos, isEditable, photoView, saveListingFields } from "../../../lib/listings";
+import { notifyAdminsSubmitted } from "../../../lib/notify";
+
+const user = Astro.locals.user!;
+const profile = Astro.locals.profile!;
+const id = Astro.params.id!;
+
+let listing = await getOwnListing(user.id, id);
+if (!listing) return Astro.rewrite(url("/404"));
+if (!isEditable(listing)) return Astro.redirect(url(`/listings/${id}`), 303);
+
+const stepParam = Astro.url.searchParams.get("step") as StepKey | null;
+const stepIndex = Math.max(0, STEPS.findIndex((s) => s.key === stepParam));
+const step = STEPS[stepIndex];
+const stepUrl = (key: StepKey) => `${url(`/listings/${id}/edit`)}?step=${key}`;
+
+let errors: Partial<Record<ListingField, string>> = {};
+let posted: Record<string, string> | null = null;
+let submitError = "";
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  posted = {};
+  for (const [k, v] of form.entries()) if (typeof v === "string") posted[k] = v;
+  const postedStep = (posted.step as StepKey) ?? step.key;
+  const nav = posted.nav ?? "next";
+  const isAutosave = Astro.request.headers.get("x-autosave") === "1";
+
+  if (postedStep !== "photos" && postedStep !== "review") {
+    const result = parseStep(postedStep, posted);
+    errors = result.errors;
+    await saveListingFields(id, user.id, result.data);
+    if (isAutosave) {
+      return new Response(JSON.stringify({ ok: true, errors }), {
+        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+      });
+    }
+  }
+
+  if (postedStep === "review" && nav === "submit") {
+    listing = (await getOwnListing(user.id, id))!;
+    const issues = checklist(listing, (await getPhotos(id)).length);
+    if (!user.emailVerified) {
+      submitError = "Confirm your email before you submit your listing.";
+    } else if (issues.length) {
+      submitError = "Finish the items below, then submit again.";
+    } else {
+      const updated = await getDb()
+        .update(listings)
+        .set({ status: "submitted", submittedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(listings.id, id), eq(listings.userId, user.id), inArray(listings.status, [...EDITABLE_STATUSES])))
+        .returning({ id: listings.id })
+        .get();
+      if (updated) {
+        await notifyAdminsSubmitted(id, listingTitle(listing));
+        return Astro.redirect(`${url(`/listings/${id}`)}?submitted=1`, 303);
+      }
+      submitError = "This listing can't be submitted right now.";
+    }
+  } else if (Object.keys(errors).length === 0 || nav === "back") {
+    const target =
+      nav === "back" ? STEPS[Math.max(0, stepIndex - 1)] : nav === "save" ? step : STEPS[Math.min(STEPS.length - 1, stepIndex + 1)];
+    return Astro.redirect(nav === "save" ? `${stepUrl(target.key)}&saved=1` : stepUrl(target.key), 303);
+  }
+}
+
+listing = (await getOwnListing(user.id, id))!;
+const photos = await getPhotos(id);
+const issues = checklist(listing, photos.length);
+const stepIssues = (key: StepKey) => issues.filter((i) => i.step === key).length;
+
+/** Value to show in a field: what was just posted (on error), else what is saved. */
+const v = (field: ListingField): string => {
+  if (posted && field in posted && posted.step === step.key) return posted[field];
+  const saved = listing![field as keyof typeof listing];
+  if (saved === null || saved === undefined) return "";
+  return String(saved);
+};
+const checked = (field: ListingField) => (posted && posted.step === step.key ? posted[field] === "on" : Boolean(listing![field as keyof typeof listing]));
+const title = listingTitle(listing);
+const isChanges = listing.status === "changes_requested";
+---
+
+<Base title={`${step.title} | ${title}`}>
+  <a class="back" href={url("/")}>← My garage</a>
+  <p class="eyebrow"><span>{title}</span><span>{listing.status === "changes_requested" ? "Changes requested" : "Draft"}</span></p>
+  <h1 class="page-title">{isChanges ? "Update your listing" : "Sell your car"}</h1>
+
+  <div class="wiz">
+  <nav class="steps" aria-label="Listing steps">
+    <ol>
+      {
+        STEPS.map((s, i) => (
+          <li class:list={[{ "is-current": i === stepIndex, "is-done": stepIssues(s.key) === 0 && s.key !== "review" }]}>
+            <a href={stepUrl(s.key)} aria-current={i === stepIndex ? "step" : undefined}>
+              <span class="steps__n" aria-hidden="true">{stepIssues(s.key) === 0 && s.key !== "review" ? "✓" : i + 1}</span>
+              <span class="steps__t">{s.title}</span>
+              {s.key !== "review" && stepIssues(s.key) > 0 && <span class="steps__left">{stepIssues(s.key)} to do</span>}
+            </a>
+          </li>
+        ))
+      }
+    </ol>
+    <p class="steps__summary">{issues.length === 0 ? "Ready to submit" : `${issues.length} ${issues.length === 1 ? "thing" : "things"} left before you can submit`}</p>
+  </nav>
+
+  <div class="wiz__main">
+  {
+    isChanges && listing.reviewNotes && (
+      <Notice tone="info">
+        <p><strong>Notes from our reviewer:</strong></p>
+        <p class="pre">{listing.reviewNotes}</p>
+      </Notice>
+    )
+    }
+    {Astro.url.searchParams.get("saved") && <Notice tone="ok"><p>Saved.</p></Notice>}
+    {Object.keys(errors).length > 0 && <Notice tone="error"><p>Check the highlighted fields. Everything else was saved.</p></Notice>}
+
+  <div class="card wizard">
+    <h2>{step.title}</h2>
+
+    {
+      step.key === "car" && (
+        <form method="post" data-autosave novalidate>
+          <input type="hidden" name="step" value="car" />
+          <div class="field-row field-row--3">
+            <Field name="year" label="Year" inputmode="numeric" value={v("year")} error={errors.year} maxlength={4} required={false} />
+            <Field name="make" label="Make" value={v("make")} error={errors.make} maxlength={40} required={false} hint="Like Porsche" />
+            <Field name="model" label="Model" value={v("model")} error={errors.model} maxlength={60} required={false} hint="Like 911 Carrera" />
+          </div>
+          <Field name="headline" label="Headline" value={v("headline")} error={errors.headline} maxlength={90} required={false}
+            hint="One line that makes a buyer stop scrolling. Like: Two owners, full records, fresh clutch." />
+          <div class="field-row">
+            <Field name="mileage" label="Mileage" inputmode="numeric" value={v("mileage")} error={errors.mileage} maxlength={9} required={false} hint="As shown on the odometer" />
+            <Field name="vin" label="VIN" value={v("vin")} error={errors.vin} maxlength={20} required={false} hint="Required for 1981 and newer" />
+          </div>
+          <div class="field-row">
+            <Select name="transmission" label="Transmission" options={TRANSMISSIONS} value={v("transmission")} error={errors.transmission} />
+            <Select name="drivetrain" label="Drivetrain" options={DRIVETRAINS} value={v("drivetrain")} error={errors.drivetrain} />
+          </div>
+          <div class="field-row">
+            <Select name="bodyStyle" label="Body style" options={BODY_STYLES} value={v("bodyStyle")} error={errors.bodyStyle} />
+            <Field name="engine" label="Engine" value={v("engine")} error={errors.engine} maxlength={60} required={false} hint="Like 2.5L Turbo I4" />
+          </div>
+          <div class="field-row">
+            <Field name="exteriorColor" label="Exterior color" value={v("exteriorColor")} error={errors.exteriorColor} maxlength={40} required={false} />
+            <Field name="interiorColor" label="Interior color" value={v("interiorColor")} error={errors.interiorColor} maxlength={40} required={false} />
+          </div>
+          <div class="wizard__nav">
+            <button class="btn nav-next" type="submit" name="nav" value="next">Save and continue</button>
+            <span class="autosave" data-autosave-status aria-live="polite"></span>
+          </div>
+        </form>
+      )
+    }
+
+    {
+      step.key === "history" && (
+        <form method="post" data-autosave novalidate>
+          <input type="hidden" name="step" value="history" />
+          <TextArea name="description" label="Description" value={v("description")} error={errors.description} maxlength={8000} rows={10} counter={MIN_DESCRIPTION}
+            hint="Tell the car's story. How long you have owned it, how it drives, what has been done, and why you are selling." />
+          <TextArea name="highlights" label="Highlights" value={v("highlights")} error={errors.highlights} maxlength={3000} rows={5}
+            hint="One per line. What makes this car special." />
+          <TextArea name="knownIssues" label="Known issues" value={v("knownIssues")} error={errors.knownIssues} maxlength={3000} rows={5}
+            hint="One per line. Chips, scuffs, leaks, warning lights. Honest disclosure is what makes buyers trust this marketplace." />
+          <TextArea name="modifications" label="Modifications" value={v("modifications")} error={errors.modifications} maxlength={3000} rows={4}
+            hint="One per line. Leave blank if the car is stock." />
+          <TextArea name="serviceHistory" label="Service history" value={v("serviceHistory")} error={errors.serviceHistory} maxlength={6000} rows={6}
+            hint="Recent work, with dates and mileage if you have them." />
+          <div class="field-row field-row--3">
+            <Field name="ownerCount" label="Number of owners" inputmode="numeric" value={v("ownerCount")} error={errors.ownerCount} maxlength={2} required={false} hint="Including you" />
+            <Select name="titleStatus" label="Title status" options={TITLE_STATUSES} value={v("titleStatus")} error={errors.titleStatus} />
+            <Select name="titleState" label="Title state" options={US_STATES} value={v("titleState")} error={errors.titleState} placeholder="State" />
+          </div>
+          <Check name="recordsOnFile" label="I have service records for this car" checked={checked("recordsOnFile")}
+            hint="Our reviewer may ask to see them." />
+          <Field name="videoUrl" label="Video link" type="url" value={v("videoUrl")} error={errors.videoUrl} maxlength={300} required={false}
+            hint="Optional. A YouTube or Vimeo link, like a walkaround or cold start." />
+          <div class="wizard__nav">
+            {/* "Save and continue" comes first so pressing Enter continues. */}
+            <button class="btn nav-next" type="submit" name="nav" value="next">Save and continue</button>
+            <span class="autosave" data-autosave-status aria-live="polite"></span>
+            <button class="btn btn--secondary nav-back" type="submit" name="nav" value="back">Back</button>
+          </div>
+        </form>
+      )
+    }
+
+    {
+      step.key === "photos" && (
+        <>
+          <p class="lede">
+            At least {MIN_PHOTOS} photos, up to {MAX_PHOTOS}. The first photo is the one buyers see in the listings grid.
+          </p>
+          <PhotoUploader
+            client:load
+            endpoint={url(`/api/listings/${id}/photos`)}
+            initialPhotos={photos.map(photoView)}
+            min={MIN_PHOTOS}
+            max={MAX_PHOTOS}
+          />
+          <div class="wizard__nav">
+            <a class="btn nav-next" href={stepUrl("price")}>Continue</a>
+            <a class="btn btn--secondary nav-back" href={stepUrl("history")}>Back</a>
+          </div>
+        </>
+      )
+    }
+
+    {
+      step.key === "price" && (
+        <form method="post" data-autosave novalidate>
+          <input type="hidden" name="step" value="price" />
+          <Field name="price" label="Asking price" inputmode="numeric" value={v("price")} error={errors.price} maxlength={12} required={false}
+            hint="Whole dollars. Check recent sales of similar cars." />
+          <Check name="acceptsOffers" label="Accept offers" checked={checked("acceptsOffers")}
+            hint="Buyers can send offers. You choose to accept, counter or decline. Offers under half your price are blocked." />
+          <div class="field-row">
+            <Field name="locationCity" label="City" autocomplete="address-level2" value={v("locationCity")} error={errors.locationCity} maxlength={60} required={false} />
+            <Select name="locationState" label="State" options={US_STATES} value={v("locationState")} error={errors.locationState} placeholder="State" />
+          </div>
+          <fieldset>
+            <legend>How buyers can reach you</legend>
+            <label class="radio">
+              <input type="radio" name="contactMethod" value="messages" checked={v("contactMethod") !== "messages_phone"} />
+              <span>Messages only<small>Buyers message you here. Your email and phone stay private.</small></span>
+            </label>
+            <label class="radio">
+              <input type="radio" name="contactMethod" value="messages_phone" checked={v("contactMethod") === "messages_phone"} />
+              <span>Messages and phone<small>Your phone number is shown on the listing page.</small></span>
+            </label>
+          </fieldset>
+          <Field name="contactPhone" label="Phone for this listing" type="tel" inputmode="tel" autocomplete="tel"
+            value={v("contactPhone") || profile.phone || ""} error={errors.contactPhone} maxlength={25} required={false}
+            hint="Only needed if you chose Messages and phone." />
+          <div class="wizard__nav">
+            {/* "Save and continue" comes first so pressing Enter continues. */}
+            <button class="btn nav-next" type="submit" name="nav" value="next">Save and continue</button>
+            <span class="autosave" data-autosave-status aria-live="polite"></span>
+            <button class="btn btn--secondary nav-back" type="submit" name="nav" value="back">Back</button>
+          </div>
+        </form>
+      )
+    }
+
+    {
+      step.key === "review" && (
+        <>
+          {submitError && <Notice tone="error"><p>{submitError}</p></Notice>}
+          {!user.emailVerified && (
+            <Notice tone="info">
+              <p>You need to <a href={`${url("/verify-email")}?next=${encodeURIComponent(stepUrl("review"))}`}>confirm your email</a> before you submit.</p>
+            </Notice>
+          )}
+
+          {issues.length > 0 ? (
+            <div class="todo">
+              <p class="label">Still to do</p>
+              <ul>
+                {issues.map((i) => (
+                  <li><a href={stepUrl(i.step)}>{i.message}</a></li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <Notice tone="ok"><p>Everything our reviewers need is here.</p></Notice>
+          )}
+
+          {photos.length > 0 && (
+            <div class="strip">
+              {photos.slice(0, 9).map((p, i) => (
+                <img src={photoView(p).url} alt={`Photo ${i + 1}`} loading="lazy" />
+              ))}
+            </div>
+          )}
+
+          <h3 class="summary-title">{title}</h3>
+          {listing.headline && <p class="muted">{listing.headline}</p>}
+          <div class="specs">
+            <div class="spec-row"><span>Price</span><span class="price">{formatPrice(listing.price) || "Not set"}</span></div>
+            <div class="spec-row"><span>Mileage</span><span>{formatMiles(listing.mileage) || "Not set"}</span></div>
+            <div class="spec-row"><span>Transmission</span><span>{optionLabel(TRANSMISSIONS, listing.transmission) || "Not set"}</span></div>
+            <div class="spec-row"><span>Drivetrain</span><span>{optionLabel(DRIVETRAINS, listing.drivetrain) || "Not set"}</span></div>
+            <div class="spec-row"><span>Body</span><span>{optionLabel(BODY_STYLES, listing.bodyStyle) || "Not set"}</span></div>
+            <div class="spec-row"><span>Engine</span><span>{listing.engine || "Not set"}</span></div>
+            <div class="spec-row"><span>VIN</span><span class="mono-v">{listing.vin || "Not set"}</span></div>
+            <div class="spec-row"><span>Title</span><span>{[optionLabel(TITLE_STATUSES, listing.titleStatus), listing.titleState].filter(Boolean).join(", ") || "Not set"}</span></div>
+            <div class="spec-row"><span>Location</span><span>{[listing.locationCity, listing.locationState].filter(Boolean).join(", ") || "Not set"}</span></div>
+            <div class="spec-row"><span>Offers</span><span>{listing.acceptsOffers ? "Accepted" : "Not accepted"}</span></div>
+            <div class="spec-row"><span>Contact</span><span>{listing.contactMethod === "messages_phone" ? `Messages and phone, ${listing.contactPhone ?? "no number"}` : "Messages only"}</span></div>
+            <div class="spec-row"><span>Photos</span><span>{photos.length}</span></div>
+          </div>
+
+          <form method="post" class="wizard__nav">
+            <input type="hidden" name="step" value="review" />
+            <a class="btn btn--secondary nav-back" href={stepUrl("price")}>Back</a>
+            <button class="btn nav-next" type="submit" name="nav" value="submit" disabled={issues.length > 0 || !user.emailVerified}>
+              Submit for review
+            </button>
+          </form>
+          <p class="muted small">A person reviews every listing, usually within a day. We will email you when it is live or if anything needs changing.</p>
+        </>
+      )
+    }
+  </div>
+  </div>
+
+  <aside class="wiz__help">
+    <section class="card help">
+      <p class="label">Tips</p>
+      {step.key === "car" && (
+        <ul>
+          <li>Buyers filter by year, make, model and transmission, so get those exactly right.</li>
+          <li>The VIN is on the driver side of the dash, visible through the windshield, and on the door jamb.</li>
+          <li>Use the model name the way enthusiasts say it, like 911 Carrera or M3 Coupe.</li>
+        </ul>
+      )}
+      {step.key === "history" && (
+        <ul>
+          <li>Write it like you are telling a friend about the car. How you found it, how it drives, what you have done.</li>
+          <li>Known issues build trust. Listings that disclose wear sell faster here.</li>
+          <li>Dates and mileage for major service (clutch, timing, bearings) matter more than oil changes.</li>
+        </ul>
+      )}
+      {step.key === "photos" && (
+        <ul>
+          <li>Shoot in daylight or overcast, with the car clean and nothing in the background.</li>
+          <li>Landscape orientation, whole car in frame for the exterior shots.</li>
+          <li>Photograph the flaws you listed. Buyers notice when they are missing.</li>
+          <li>On a computer, drag photos straight from a folder onto the upload box.</li>
+        </ul>
+      )}
+      {step.key === "price" && (
+        <ul>
+          <li>Check recent sales of the same model and spec, not asking prices.</li>
+          <li>Accepting offers gets more buyers talking. You never have to take one.</li>
+          <li>Your phone is only shown if you choose Messages and phone.</li>
+        </ul>
+      )}
+      {step.key === "review" && (
+        <ol>
+          <li>A person reviews your listing, usually within a day.</li>
+          <li>If anything needs changing, we email you a note.</li>
+          <li>Once approved it goes live and buyers can message you or make offers.</li>
+        </ol>
+      )}
+    </section>
+    {step.key !== "review" && issues.length > 0 && (
+      <section class="card help">
+        <p class="label">Still to do</p>
+        <ul class="todo-list">
+          {issues.slice(0, 8).map((i) => (
+            <li class:list={{ "is-here": i.step === step.key }}><a href={stepUrl(i.step)}>{i.message}</a></li>
+          ))}
+        </ul>
+        {issues.length > 8 && <p class="muted small">And {issues.length - 8} more.</p>}
+      </section>
+    )}
+  </aside>
+  </div>
+</Base>
+
+<script>
+  // Autosave: save the current step a moment after the seller stops typing.
+  const form = document.querySelector<HTMLFormElement>("form[data-autosave]");
+  const status = form?.querySelector<HTMLElement>("[data-autosave-status]");
+  let timer: number | undefined;
+  let dirty = false;
+
+  async function save() {
+    if (!form || !dirty) return;
+    dirty = false;
+    if (status) status.textContent = "Saving…";
+    try {
+      const res = await fetch(form.action || location.href, {
+        method: "POST",
+        body: new FormData(form),
+        headers: { "X-Autosave": "1" },
+      });
+      if (!res.ok) throw new Error();
+      if (status) status.textContent = "Draft saved";
+    } catch {
+      dirty = true;
+      if (status) status.textContent = "Not saved. Check your connection.";
+    }
+  }
+
+  form?.addEventListener("input", () => {
+    dirty = true;
+    window.clearTimeout(timer);
+    timer = window.setTimeout(save, 1200);
+  });
+  form?.addEventListener("change", () => {
+    dirty = true;
+    window.clearTimeout(timer);
+    timer = window.setTimeout(save, 400);
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") save();
+  });
+  form?.addEventListener("submit", () => window.clearTimeout(timer));
+
+  // Live character count for fields with a minimum (description).
+  document.querySelectorAll<HTMLElement>("[data-counter-for]").forEach((el) => {
+    const input = document.getElementById(el.dataset.counterFor!) as HTMLTextAreaElement | null;
+    const min = Number(input?.dataset.min ?? 0);
+    const update = () => {
+      const n = input?.value.length ?? 0;
+      el.textContent = n >= min ? `${n} characters` : `${n} of ${min} characters minimum`;
+      el.classList.toggle("is-ok", n >= min);
+    };
+    input?.addEventListener("input", update);
+  });
+</script>
+
+<style>
+  /* Desktop: steps down the left, form in the middle, tips on the right. */
+  .wiz {
+    display: grid;
+    grid-template-columns: 230px minmax(0, 1fr) 300px;
+    gap: 28px;
+    align-items: start;
+    margin-top: 24px;
+  }
+  .steps {
+    position: sticky;
+    top: 20px;
+  }
+  .steps ol {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 4px;
+  }
+  .steps a {
+    display: grid;
+    grid-template-columns: 30px 1fr;
+    align-items: center;
+    gap: 0 10px;
+    min-height: 52px;
+    padding: 8px 12px;
+    border-radius: var(--radius-btn);
+    color: var(--muted);
+    text-decoration: none;
+    font-weight: 700;
+  }
+  .steps a:hover {
+    background: var(--white);
+  }
+  .steps__n {
+    grid-row: span 2;
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 999px;
+    border: 2px solid var(--line);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  .steps__left {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--red);
+  }
+  .steps .is-done a {
+    color: var(--ink);
+  }
+  .steps .is-done .steps__n {
+    background: var(--ink);
+    border-color: var(--ink);
+    color: var(--white);
+  }
+  .steps .is-current a {
+    background: var(--white);
+    color: var(--ink);
+    box-shadow: inset 3px 0 0 var(--red), 0 0 0 1px var(--line);
+  }
+  .steps .is-current .steps__n {
+    border-color: var(--red);
+    color: var(--red);
+    background: var(--white);
+  }
+  .steps__summary {
+    margin: 16px 12px 0;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .wiz__main {
+    min-width: 0;
+  }
+  .wiz__help {
+    display: grid;
+    gap: 16px;
+    position: sticky;
+    top: 20px;
+  }
+  .help ul,
+  .help ol {
+    margin: 8px 0 0;
+    padding-left: 18px;
+    font-size: 14px;
+    color: var(--muted);
+  }
+  .help li {
+    margin: 8px 0;
+  }
+  .todo-list a {
+    color: var(--ink);
+  }
+  .todo-list .is-here a {
+    font-weight: 700;
+  }
+
+  /* Smaller laptops: tips move under the form. */
+  @media (max-width: 1180px) {
+    .wiz {
+      grid-template-columns: 220px minmax(0, 1fr);
+    }
+    .wiz__help {
+      grid-column: 2;
+      position: static;
+      grid-template-columns: 1fr 1fr;
+    }
+  }
+  /* Tablets and phones: steps become a bar across the top. */
+  @media (max-width: 900px) {
+    .wiz {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+    .wiz__help {
+      grid-column: auto;
+      grid-template-columns: 1fr;
+    }
+    .steps {
+      position: static;
+    }
+    .steps ol {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+    }
+    .steps li {
+      flex: 1 1 0;
+      min-width: 44px;
+    }
+    .steps a {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+      min-height: var(--tap);
+      padding: 8px 0 0;
+      border-radius: 0;
+      border-top: 4px solid var(--line);
+      font-size: 13px;
+      background: none !important;
+      box-shadow: none !important;
+    }
+    .steps .is-done a {
+      border-top-color: var(--ink);
+    }
+    .steps .is-current a {
+      border-top-color: var(--red);
+    }
+    .steps__n {
+      width: auto;
+      height: auto;
+      border: 0 !important;
+      background: none !important;
+      color: inherit !important;
+      font-size: 11px;
+    }
+    .steps__left,
+    .steps__summary {
+      display: none;
+    }
+    .steps li:not(.is-current) .steps__t {
+      display: none;
+    }
+    .steps li.is-current {
+      flex-grow: 3;
+    }
+  }
+  .wizard__nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 24px;
+    padding-top: 18px;
+    border-top: 1px dashed var(--line);
+  }
+  .nav-back {
+    order: 0;
+  }
+  .autosave {
+    order: 1;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .nav-next {
+    order: 2;
+    margin-left: auto;
+  }
+  :global(.counter.is-ok) {
+    color: var(--ok);
+  }
+  .pre {
+    white-space: pre-wrap;
+  }
+  .todo {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-btn);
+    padding: 12px 16px;
+    margin-bottom: 18px;
+  }
+  .todo ul {
+    margin: 8px 0 0;
+    padding-left: 20px;
+  }
+  .todo li {
+    margin: 6px 0;
+  }
+  .todo a {
+    color: var(--ink);
+  }
+  .strip {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-bottom: 18px;
+  }
+  .strip img {
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 6px;
+  }
+  .strip img:first-child {
+    grid-column: span 2;
+    grid-row: span 2;
+  }
+  .summary-title {
+    font-size: 22px;
+    margin: 0 0 4px;
+  }
+  .specs {
+    margin: 12px 0;
+  }
+  .mono-v {
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .small {
+    font-size: 14px;
+    margin-top: 12px;
+  }
+</style>

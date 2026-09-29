@@ -1,0 +1,11 @@
+---
+import { url } from "../lib/paths";
+import { callAuth, redirectWithCookies } from "../lib/auth-call";
+
+// Sign out is a POST (from the header menu) so a link can't sign people out.
+if (Astro.request.method === "POST") {
+  const result = await callAuth(Astro.request, "/sign-out", {});
+  return redirectWithCookies(`${url("/login")}?notice=signed-out`, result.cookies);
+}
+return Astro.redirect(url("/"), 303);
+---

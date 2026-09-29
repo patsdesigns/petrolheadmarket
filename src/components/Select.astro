@@ -1,0 +1,25 @@
+---
+interface Props {
+  name: string;
+  label: string;
+  options: readonly { value: string; label: string }[] | readonly string[];
+  value?: string | null;
+  error?: string;
+  hint?: string;
+  placeholder?: string;
+}
+const { name, label, options, value, error, hint, placeholder = "Choose one" } = Astro.props;
+const id = `f-${name}`;
+const opts = (options as readonly any[]).map((o) => (typeof o === "string" ? { value: o, label: o } : o));
+const describedBy = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolean).join(" ") || undefined;
+---
+
+<div class="field">
+  <label for={id}>{label}</label>
+  <select id={id} name={name} aria-invalid={error ? "true" : undefined} aria-describedby={describedBy}>
+    <option value="">{placeholder}</option>
+    {opts.map((o) => <option value={o.value} selected={o.value === value}>{o.label}</option>)}
+  </select>
+  {hint && <span class="hint" id={`${id}-hint`}>{hint}</span>}
+  {error && <span class="error" id={`${id}-error`}>{error}</span>}
+</div>

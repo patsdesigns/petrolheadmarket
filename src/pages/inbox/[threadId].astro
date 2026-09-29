@@ -1,0 +1,94 @@
+---
+import { eq } from "drizzle-orm";
+import Base from "../../layouts/Base.astro";
+import SafetyNote from "../../components/SafetyNote.astro";
+import MessageThread from "../../components/MessageThread.tsx";
+import "../../styles/thread.css";
+import "../../styles/inbox.css";
+import InboxList from "../../components/InboxList.astro";
+import { getDb } from "../../db/client";
+import { profiles } from "../../db/schema";
+import { url, siteUrl } from "../../lib/paths";
+import { formatPrice, listingTitle } from "../../lib/listing-rules";
+import { getThreadForUser, inboxFor, markRead, MAX_MESSAGE } from "../../lib/messaging";
+import { threadView } from "../../lib/thread-view";
+
+const user = Astro.locals.user!;
+const isAdmin = Astro.locals.profile?.role === "admin";
+const found = await getThreadForUser(Astro.params.threadId!, user.id, isAdmin);
+if (!found) return Astro.rewrite(url("/404"));
+const { thread, listing, participant } = found;
+
+if (participant) await markRead(thread.id, user.id);
+
+const otherId = thread.buyerId === user.id ? thread.sellerId : thread.buyerId;
+const other = await getDb().select().from(profiles).where(eq(profiles.userId, otherId)).get();
+const otherName = participant ? (other?.displayName ?? "Member") : "Buyer and seller";
+const initial = await threadView(thread.id, participant ? user.id : thread.buyerId);
+const isSeller = thread.sellerId === user.id;
+const rows = participant ? await inboxFor(user.id) : [];
+const offerLink = listing.slug && !isSeller && listing.status === "live" && listing.acceptsOffers
+  ? `${url("/offer")}?listing=${encodeURIComponent(listing.slug)}`
+  : null;
+---
+
+<Base title={`Messages: ${listingTitle(listing)}`}>
+  <div class="page-head">
+    <h1 class="page-title">Inbox</h1>
+  </div>
+  <div class:list={["inbox", "has-thread", { "no-list": !participant }]}>
+    {participant && (
+      <div class="inbox__list">
+        <InboxList rows={rows} activeId={thread.id} />
+      </div>
+    )}
+    <div class="inbox__pane">
+      <a class="inbox__back" href={url("/inbox")}>All conversations</a>
+      <h2 class="who">{participant ? otherName : "Conversation"}</h2>
+      <p class="about">
+        {isSeller ? "About your " : "About the "}
+        {listing.slug ? <a href={siteUrl(`/listings/${listing.slug}`)}>{listingTitle(listing)}</a> : listingTitle(listing)}
+        {listing.price && <span class="price"> · {formatPrice(listing.price)}</span>}
+        {offerLink && <> · <a href={offerLink}>Make an offer</a></>}
+      </p>
+      {!participant && <p class="admin-note">Admin view. "You" is the buyer. You can't reply here.</p>}
+      <SafetyNote />
+      <MessageThread
+        client:load
+        endpoint={url(`/api/threads/${thread.id}/messages`)}
+        initial={initial}
+        otherName={participant ? otherName : "Seller"}
+        canReply={participant && user.emailVerified}
+        maxLength={MAX_MESSAGE}
+      />
+      {participant && !user.emailVerified && (
+        <p class="muted"><a href={url("/verify-email")}>Confirm your email</a> to reply.</p>
+      )}
+    </div>
+  </div>
+</Base>
+
+<style>
+  .who {
+    font-size: 24px;
+    margin: 0 0 4px;
+  }
+  .no-list {
+    grid-template-columns: 1fr;
+  }
+  .about {
+    margin: 0 0 16px;
+    color: var(--muted);
+  }
+  .about a {
+    color: var(--ink);
+    font-weight: 700;
+  }
+  .admin-note {
+    color: var(--red);
+    font-weight: 600;
+  }
+  .muted {
+    color: var(--muted);
+  }
+</style>

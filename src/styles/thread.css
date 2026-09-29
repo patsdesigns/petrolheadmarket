@@ -1,0 +1,65 @@
+.mt__list {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 16px;
+  display: grid;
+  gap: 10px;
+}
+.mt__msg {
+  max-width: 85%;
+  justify-self: start;
+  padding: 10px 14px;
+  border-radius: 12px 12px 12px 4px;
+  background: var(--white);
+  border: 1px solid var(--line);
+}
+.mt__msg.is-mine {
+  justify-self: end;
+  border-radius: 12px 12px 4px 12px;
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--white);
+}
+.mt__who {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  opacity: 0.7;
+}
+.mt__body {
+  margin: 4px 0;
+  white-space: pre-wrap;
+}
+.mt__time {
+  font-size: 12px;
+  opacity: 0.7;
+}
+.mt__form {
+  display: grid;
+  gap: 8px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--line);
+}
+.mt__label {
+  font-weight: 700;
+}
+.mt__form textarea {
+  width: 100%;
+  min-height: 90px;
+  padding: 10px 14px;
+  font: inherit;
+  font-size: 17px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  resize: vertical;
+}
+.mt__form .btn {
+  justify-self: end;
+}
+.mt__error {
+  color: var(--red);
+  font-weight: 600;
+  margin: 0;
+}

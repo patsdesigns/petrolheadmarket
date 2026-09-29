@@ -1,0 +1,115 @@
+---
+import { url } from "../lib/paths";
+import type { InboxRow } from "../lib/messaging";
+
+interface Props {
+  rows: InboxRow[];
+  activeId?: string;
+}
+const { rows, activeId } = Astro.props;
+const when = (d: Date) => {
+  const mins = Math.floor((Date.now() - d.getTime()) / 60000);
+  if (mins < 1) return "now";
+  if (mins < 60) return `${mins}m`;
+  if (mins < 60 * 24) return `${Math.floor(mins / 60)}h`;
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/Los_Angeles" });
+};
+---
+
+{
+  rows.length === 0 ? (
+    <div class="inbox-empty">
+      <p><strong>No messages yet.</strong></p>
+      <p>When you message a seller, or a buyer messages you about your car, the conversation shows up here.</p>
+    </div>
+  ) : (
+    <ul class="inbox-list">
+      {rows.map((r) => (
+        <li>
+          <a
+            class:list={["inbox-row", { "is-unread": r.unread > 0, "is-active": r.id === activeId }]}
+            href={url(`/inbox/${r.id}`)}
+            aria-current={r.id === activeId ? "page" : undefined}
+          >
+            <span class="inbox-row__top">
+              <strong>{r.otherName}</strong>
+              <span class="label">{when(r.lastMessageAt)}</span>
+            </span>
+            <span class="inbox-row__car">{r.role === "seller" ? "Buyer for your " : ""}{r.listingTitle}</span>
+            <span class="inbox-row__preview">{r.preview}</span>
+            {r.unread > 0 && <span class="inbox-row__badge" aria-label={`${r.unread} unread`}>{r.unread}</span>}
+          </a>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+<style>
+  .inbox-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+  .inbox-row {
+    position: relative;
+    display: grid;
+    gap: 2px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: inherit;
+    border-bottom: 1px solid var(--line);
+  }
+  .inbox-row:hover {
+    background: var(--paper);
+  }
+  .inbox-row.is-active {
+    background: var(--paper);
+    box-shadow: inset 3px 0 0 var(--red);
+  }
+  .inbox-row.is-unread .inbox-row__preview {
+    color: var(--ink);
+    font-weight: 600;
+  }
+  .inbox-row__top {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    padding-right: 30px;
+  }
+  .inbox-row__car {
+    font-size: 14px;
+  }
+  .inbox-row__preview {
+    color: var(--muted);
+    font-size: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .inbox-row__badge {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    min-width: 22px;
+    height: 22px;
+    padding: 0 6px;
+    border-radius: 999px;
+    background: var(--red);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    display: grid;
+    place-items: center;
+  }
+  .inbox-empty {
+    padding: 20px;
+    color: var(--muted);
+  }
+  .inbox-empty p {
+    margin: 0 0 6px;
+  }
+  .inbox-empty strong {
+    color: var(--ink);
+  }
+</style>

@@ -1,0 +1,283 @@
+---
+// Mirrors the "Site Header" component on the Webflow site (phm-top, phm-mast,
+// phm-promise). Keep class sizes and copy in sync with Webflow.
+import { url, siteUrl } from "../lib/paths";
+
+interface Props {
+  user?: { displayName: string; isAdmin: boolean } | null;
+  unread?: number;
+}
+
+const { user = null, unread = 0 } = Astro.props;
+const path = Astro.url.pathname;
+const here = (p: string) => (p === url("/") ? path === p : path.startsWith(p));
+---
+
+<div class="top">
+  <header class="mast">
+    <div class="mast__inner">
+      <a class="brand" href={siteUrl("/")}>
+        <span class="roundel" aria-hidden="true">PH</span>
+        <span class="wordmark">
+          Petrol Head Market
+          <span class="wordmark__sub">Enthusiast car classifieds</span>
+        </span>
+      </a>
+      <nav class="actions" aria-label="Account">
+        {
+          user ? (
+            <>
+              <a class="ghost" href={url("/")} aria-current={here(url("/")) ? "page" : undefined}>My garage</a>
+              <a class="ghost" href={url("/inbox")} aria-current={here(url("/inbox")) ? "page" : undefined}>
+                Inbox
+                {unread > 0 && (
+                  <span class="count" aria-label={`${unread} unread`}>{unread}</span>
+                )}
+              </a>
+              <details class="menu">
+                <summary class="ghost">
+                  {user.displayName}
+                  <span aria-hidden="true" class="menu__caret">▾</span>
+                </summary>
+                <div class="menu__panel">
+                  <a href={url("/account")}>Account settings</a>
+                  <a href={url("/offers")}>Offers</a>
+                  {user.isAdmin && <a href={url("/admin")}>Review queue</a>}
+                  <form method="post" action={url("/logout")}>
+                    <button type="submit">Sign out</button>
+                  </form>
+                </div>
+              </details>
+            </>
+          ) : (
+            <a class="ghost" href={url("/login")}>Sign in</a>
+          )
+        }
+        <a class="sell" href={url("/sell")}>
+          <span class="sell-long">Sell your car</span><span class="sell-short">Sell</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+  <div class="promise">Every listing vetted · 20-photo minimum · No auctions · Nothing stale</div>
+</div>
+
+<style>
+  .top {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  .mast {
+    background: var(--ink);
+    color: var(--white);
+    font-family: var(--font-ui);
+  }
+  .mast__inner {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    max-width: calc(var(--max) + 2 * var(--gutter));
+    margin: 0 auto;
+    padding: 12px var(--gutter);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: inherit;
+    text-decoration: none;
+  }
+  .roundel {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 0 0 40px;
+    width: 40px;
+    height: 40px;
+    border: 3px solid var(--red);
+    border-radius: 50%;
+    background: var(--white);
+    color: var(--ink);
+    font-size: 14px;
+    font-weight: 900;
+    letter-spacing: 0.02em;
+  }
+  .wordmark {
+    font-size: 17px;
+    line-height: 1.1;
+    font-weight: 900;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .wordmark__sub {
+    display: block;
+    margin-top: 3px;
+    color: #9ba0a8;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: none;
+  }
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 14px;
+    border: 1px solid var(--line-dark);
+    border-radius: 6px;
+    background: transparent;
+    color: #c8cbd0;
+    font-size: 13px;
+    font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .ghost:hover,
+  .ghost[aria-current="page"] {
+    border-color: #6b7079;
+    color: var(--white);
+  }
+  .sell {
+    padding: 9px 16px;
+    border-radius: 6px;
+    background: var(--red);
+    color: var(--white);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .sell:hover {
+    background: var(--red-dark);
+  }
+  .sell-short {
+    display: none;
+  }
+  .count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--red);
+    color: var(--white);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+  }
+  .menu {
+    position: relative;
+  }
+  .menu summary {
+    list-style: none;
+  }
+  .menu summary::-webkit-details-marker {
+    display: none;
+  }
+  .menu__caret {
+    font-size: 11px;
+  }
+  .menu__panel {
+    position: absolute;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 60;
+    min-width: 210px;
+    display: grid;
+    padding: 6px;
+    background: var(--white);
+    color: var(--ink);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 12px 30px rgba(21, 23, 27, 0.18);
+  }
+  .menu__panel a,
+  .menu__panel button {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    min-height: 40px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    text-align: left;
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .menu__panel a:hover,
+  .menu__panel button:hover {
+    background: var(--paper);
+  }
+  .menu__panel form {
+    margin: 4px 0 0;
+    padding-top: 4px;
+    border-top: 1px dashed var(--line);
+  }
+  .promise {
+    padding: 7px 12px;
+    background: var(--red);
+    color: var(--white);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-align: center;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  /* Small screens: keep the bar on one line. */
+  @media (max-width: 720px) {
+    .wordmark__sub {
+      display: none;
+    }
+    .wordmark {
+      font-size: 14px;
+    }
+    .actions {
+      gap: 6px;
+    }
+    .ghost {
+      padding: 7px 10px;
+    }
+    .sell {
+      padding: 8px 12px;
+    }
+    .sell-long {
+      display: none;
+    }
+    .sell-short {
+      display: inline;
+    }
+    .promise {
+      font-size: 9.5px;
+      letter-spacing: 0.08em;
+    }
+  }
+  @media (max-width: 480px) {
+    .mast__inner {
+      flex-wrap: wrap;
+      row-gap: 10px;
+    }
+    .actions {
+      width: 100%;
+      margin-left: 0;
+    }
+    .actions .sell {
+      margin-left: auto;
+    }
+  }
+</style>

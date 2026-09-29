@@ -1,0 +1,9 @@
+# Copy to .dev.vars for local preview. Never commit .dev.vars.
+WEBFLOW_API_TOKEN=
+WEBFLOW_SITE_ID=6a8cb05d39be95366772994d
+WEBFLOW_COLLECTION_ID=6a8cb2028c898e7ed8517d9c
+BETTER_AUTH_SECRET=
+RESEND_API_KEY=
+EMAIL_FROM=
+ADMIN_EMAILS=
+PUBLIC_SITE_URL=https://petrol-head-market.webflow.io

@@ -1,0 +1,212 @@
+.pu__drop {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 24px 16px;
+  text-align: center;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius-card);
+  background: var(--paper);
+}
+.pu__drop.is-active {
+  border-color: var(--red);
+  background: #fdf0f1;
+}
+.pu__drop-title {
+  margin: 0;
+  font-weight: 900;
+  font-size: 18px;
+}
+.pu__drop-hint {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.pu__status {
+  margin: 16px 0 4px;
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 12px;
+  font-weight: 600;
+}
+.pu__status.is-ok {
+  color: var(--ok);
+}
+.pu__message {
+  color: var(--red);
+  font-weight: 600;
+  margin: 8px 0;
+}
+.pu__help {
+  color: var(--muted);
+  font-size: 14px;
+  margin: 8px 0;
+}
+.pu__pending {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  gap: 8px;
+}
+.pu__pending li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 14px;
+}
+.pu__pending-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pu__pending-error {
+  grid-column: 1 / -1;
+  color: var(--red);
+}
+.pu__bar {
+  display: block;
+  width: 120px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+.pu__bar span {
+  display: block;
+  height: 100%;
+  background: var(--red);
+  transition: width 0.2s ease;
+}
+.pu__link {
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--ink);
+  text-decoration: underline;
+  cursor: pointer;
+  min-height: var(--tap);
+}
+.pu__grid {
+  list-style: none;
+  padding: 0;
+  margin: 8px 0 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 10px;
+}
+.pu__tile {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--line);
+  border: 1px solid var(--line);
+}
+.pu__tile:first-child {
+  grid-column: span 2;
+  grid-row: span 2;
+  outline: 3px solid var(--red);
+  outline-offset: -3px;
+}
+.pu__tile.is-dragging {
+  opacity: 0.6;
+  box-shadow: 0 0 0 3px var(--ink);
+}
+.pu__tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pu__main,
+.pu__num {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(21, 23, 27, 0.8);
+  color: var(--white);
+}
+.pu__main {
+  background: var(--red);
+}
+.pu__tools {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  justify-content: space-between;
+  background: linear-gradient(transparent, rgba(21, 23, 27, 0.75));
+  padding: 16px 4px 4px;
+}
+.pu__tool {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--ink);
+  font-size: 16px;
+  cursor: pointer;
+}
+.pu__handle {
+  cursor: grab;
+  touch-action: none;
+  margin-right: auto;
+}
+.pu__tools .pu__tool + .pu__tool {
+  margin-left: 4px;
+}
+.pu__shots {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-btn);
+  padding: 0 14px;
+  background: var(--white);
+}
+.pu__shots summary {
+  min-height: var(--tap);
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  cursor: pointer;
+}
+.pu__shots ul {
+  columns: 2;
+  gap: 16px;
+  margin: 0 0 8px;
+  padding-left: 18px;
+}
+.pu__shots p {
+  color: var(--muted);
+  font-size: 14px;
+}
+@media (max-width: 420px) {
+  .pu__grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .pu__shots ul {
+    columns: 1;
+  }
+}
+/* Mouse and trackpad: show photo tools on hover or keyboard focus only. */
+@media (hover: hover) and (pointer: fine) {
+  .pu__tools {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .pu__tile:hover .pu__tools,
+  .pu__tile:focus-within .pu__tools,
+  .pu__tile.is-dragging .pu__tools {
+    opacity: 1;
+  }
+}
