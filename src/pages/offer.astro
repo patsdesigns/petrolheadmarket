@@ -52,7 +52,7 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
 ---
 
 <Base title="Make an offer">
-  <p class="label"><a href={url("/offers")}>Offers</a></p>
+  <a class="back" href={url("/offers")}>← Offers</a>
   <h1 class="page-title">Make an offer</h1>
   <div class="split">
   <CarSummary {...found} size="large" />
@@ -79,6 +79,9 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
       </Notice>
     ) : (
       <div class="card offer">
+        <div class="buy__label">Asking price</div>
+        <div class="buy__price">{formatPrice(listing.price)}</div>
+        <p class="floor">Offers from {formatPrice(minOffer(listing.price!))} (half the asking price)</p>
         {!user.emailVerified && (
           <Notice tone="info">
             <p><a href={`${url("/verify-email")}?next=${encodeURIComponent(selfUrl)}`}>Confirm your email</a> to make an offer.</p>
@@ -121,11 +124,16 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
       gap: 16px;
     }
   }
-  .label a {
-    color: var(--muted);
-  }
   .offer {
 
+  }
+  .floor {
+    margin: 6px 0 18px;
+    padding-bottom: 16px;
+    border-bottom: 1px dashed var(--line);
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
   }
   .muted {
     color: var(--muted);

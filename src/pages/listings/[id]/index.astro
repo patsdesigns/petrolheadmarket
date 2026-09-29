@@ -2,11 +2,10 @@
 import { and, eq } from "drizzle-orm";
 import Base from "../../../layouts/Base.astro";
 import Notice from "../../../components/Notice.astro";
-import StatusBadge from "../../../components/StatusBadge.astro";
 import { getDb } from "../../../db/client";
 import { listings } from "../../../db/schema";
 import { url, siteUrl } from "../../../lib/paths";
-import { BODY_STYLES, DRIVETRAINS, TITLE_STATUSES, TRANSMISSIONS, optionLabel } from "../../../lib/listing-options";
+import { BODY_STYLES, DRIVETRAINS, TITLE_STATUSES, TRANSMISSIONS, STATUS_LABELS, optionLabel } from "../../../lib/listing-options";
 import { formatMiles, formatPrice, listingTitle } from "../../../lib/listing-rules";
 import { deleteDraft, getOwnListing, getPhotos, isEditable, photoView } from "../../../lib/listings";
 import { markSold, quickEdit, relist } from "../../../lib/seller-actions";
@@ -55,6 +54,7 @@ if (Astro.request.method === "POST") {
 }
 
 const photos = await getPhotos(id);
+const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
 const title = listingTitle(listing);
 const editUrl = url(`/listings/${id}/edit`);
 const publicUrl = listing.slug ? siteUrl(`/listings/${listing.slug}`) : null;
@@ -73,11 +73,14 @@ const explain: Record<string, string> = {
 ---
 
 <Base title={title}>
-  <p class="label"><a href={url("/")}>My garage</a></p>
-  <div class="head">
-    <h1 class="page-title">{title}</h1>
-    <StatusBadge status={listing.status} />
-  </div>
+  <a class="back" href={url("/")}>← My garage</a>
+  <p class="eyebrow">
+    <span>{STATUS_LABELS[listing.status]}</span>
+    {location && <span>{location}</span>}
+    <span>{photos.length} photos</span>
+  </p>
+  <h1 class="car-title">{title}</h1>
+  {listing.headline && <p class="lede">{listing.headline}</p>}
 
   {Astro.url.searchParams.get("submitted") && (
     <Notice tone="ok"><p>Submitted for review. We will email you when it is live or if anything needs changing.</p></Notice>
@@ -89,209 +92,257 @@ const explain: Record<string, string> = {
     <Notice tone="error"><p>Saved here, but the public listing did not update. We have been told and will fix it. You can also try saving again.</p></Notice>
   )}
   {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
-  <p class="lede">{explain[listing.status]}</p>
 
-  {
-    listing.reviewNotes && (listing.status === "changes_requested" || listing.status === "rejected") && (
-      <Notice tone={listing.status === "rejected" ? "error" : "info"}>
-        <p><strong>Notes from our reviewer:</strong></p>
-        <p class="pre">{listing.reviewNotes}</p>
-      </Notice>
-    )
-  }
-
-  <div class="actions">
-    {isEditable(listing) && <a class="btn" href={editUrl}>{listing.status === "draft" ? "Continue editing" : "Make changes"}</a>}
-    {publicUrl && <a class="btn btn--secondary" href={publicUrl}>View public listing</a>}
-    {
-      listing.status === "submitted" && (
-        <form method="post">
-          <input type="hidden" name="intent" value="unsubmit" />
-          <button class="btn btn--secondary" type="submit">Move back to draft</button>
-        </form>
-      )
-    }
-  </div>
-
-  {
-    (listing.status === "live" || listing.status === "offer_accepted") && (
-      <div class="manage">
-        <section class="card" aria-labelledby="quick-h">
-          <h2 id="quick-h">Quick changes</h2>
-          <p class="muted">These update the public listing right away. For any other change, reply to the email you got when your listing went live and our team will make it.</p>
-          <form method="post" novalidate>
-            <input type="hidden" name="intent" value="quick" />
-            <Field name="price" label="Asking price" inputmode="numeric" maxlength={12}
-              value={posted?.intent === "quick" ? posted.price : String(listing.price ?? "")} error={quickErrors.price} />
-            <Check name="acceptsOffers" label="Accept offers"
-              checked={posted?.intent === "quick" ? posted.acceptsOffers === "on" : listing.acceptsOffers} />
-            <fieldset>
-              <legend>How buyers can reach you</legend>
-              <label class="radio">
-                <input type="radio" name="contactMethod" value="messages" checked={(posted?.intent === "quick" ? posted.contactMethod : listing.contactMethod) !== "messages_phone"} />
-                <span>Messages only</span>
-              </label>
-              <label class="radio">
-                <input type="radio" name="contactMethod" value="messages_phone" checked={(posted?.intent === "quick" ? posted.contactMethod : listing.contactMethod) === "messages_phone"} />
-                <span>Messages and phone<small>Your phone number is shown on the listing page.</small></span>
-              </label>
-            </fieldset>
-            <Field name="contactPhone" label="Phone" type="tel" inputmode="tel" required={false} maxlength={25}
-              value={posted?.intent === "quick" ? posted.contactPhone : (listing.contactPhone ?? "")} error={quickErrors.contactPhone} />
-            <button class="btn" type="submit">Save changes</button>
-          </form>
-        </section>
-        <section class="card" aria-labelledby="deal-h">
-          <h2 id="deal-h">{listing.status === "offer_accepted" ? "Your deal" : "Sold it?"}</h2>
-          <p class="muted">
-            {listing.status === "offer_accepted"
-              ? "When the car is paid for and handed over, mark it as sold. If the deal falls through, put it back on sale."
-              : "Mark it as sold once the car is paid for and handed over, even if you sold it somewhere else."}
-          </p>
-          <div class="deal-actions">
-            <form method="post" onsubmit="return confirm('Mark this car as sold? Open offers will be closed.')">
-              <input type="hidden" name="intent" value="sold" />
-              <button class="btn" type="submit">Mark as sold</button>
-            </form>
-            {listing.status === "offer_accepted" && (
-              <form method="post" onsubmit="return confirm('Put this car back on sale? The accepted deal will be cancelled.')">
-                <input type="hidden" name="intent" value="relist" />
-                <button class="btn btn--secondary" type="submit">Put back on sale</button>
-              </form>
-            )}
-          </div>
-          <p><a href={url("/offers")}>See offers</a> · <a href={url("/inbox")}>See messages</a></p>
-        </section>
+  <div class="with-side layout">
+    <div class="main">
+      <div class:list={["hero", { stripes: photos.length === 0 }]}>
+        {photos[0] ? <img src={photoView(photos[0]).url} alt={`${title}, main photo`} /> : <span class="hero__none">No photos yet</span>}
+        <span class="hero__tag">{STATUS_LABELS[listing.status]}</span>
       </div>
-    )
-  }
+      {photos.length > 1 && (
+        <div class="thumbs">
+          {photos.slice(1, 9).map((p, i) => (
+            <img src={photoView(p).url} alt={`Photo ${i + 2}`} loading="lazy" />
+          ))}
+        </div>
+      )}
+      {photos.length > 9 && <p class="muted small">And {photos.length - 9} more photos.</p>}
 
-  <div class="layout">
-    <div>
+      <div class="facts">
+        <div class="fact"><div class="fact__label">Mileage</div><div class="fact__val">{formatMiles(listing.mileage) || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Transmission</div><div class="fact__val">{optionLabel(TRANSMISSIONS, listing.transmission) || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Drivetrain</div><div class="fact__val">{optionLabel(DRIVETRAINS, listing.drivetrain) || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Body</div><div class="fact__val">{optionLabel(BODY_STYLES, listing.bodyStyle) || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Engine</div><div class="fact__val">{listing.engine || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Title</div><div class="fact__val">{[optionLabel(TITLE_STATUSES, listing.titleStatus), listing.titleState].filter(Boolean).join(", ") || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Exterior</div><div class="fact__val">{listing.exteriorColor || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Interior</div><div class="fact__val">{listing.interiorColor || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">VIN</div><div class="fact__val mono">{listing.vin || "Not set"}</div></div>
+      </div>
+
       {
-        photos.length > 0 ? (
-          <div class="gallery">
-            {photos.slice(0, 9).map((p, i) => (
-              <img src={photoView(p).url} alt={`Photo ${i + 1}`} loading={i < 3 ? "eager" : "lazy"} />
-            ))}
-          </div>
-        ) : (
-          <div class="card empty">No photos yet.</div>
+        (listing.status === "live" || listing.status === "offer_accepted") && (
+          <section class="card quick" aria-labelledby="quick-h">
+            <h2 id="quick-h">Quick changes</h2>
+            <p class="muted">These update the public listing right away. For any other change, reply to the email you got when your listing went live and our team will make it.</p>
+            <form method="post" novalidate>
+              <input type="hidden" name="intent" value="quick" />
+              <div class="field-row">
+                <Field name="price" label="Asking price" inputmode="numeric" maxlength={12}
+                  value={posted?.intent === "quick" ? posted.price : String(listing.price ?? "")} error={quickErrors.price} />
+                <Field name="contactPhone" label="Phone" type="tel" inputmode="tel" required={false} maxlength={25}
+                  value={posted?.intent === "quick" ? posted.contactPhone : (listing.contactPhone ?? "")} error={quickErrors.contactPhone} />
+              </div>
+              <Check name="acceptsOffers" label="Accept offers"
+                checked={posted?.intent === "quick" ? posted.acceptsOffers === "on" : listing.acceptsOffers} />
+              <fieldset>
+                <legend>How buyers can reach you</legend>
+                <label class="radio">
+                  <input type="radio" name="contactMethod" value="messages" checked={(posted?.intent === "quick" ? posted.contactMethod : listing.contactMethod) !== "messages_phone"} />
+                  <span>Messages only</span>
+                </label>
+                <label class="radio">
+                  <input type="radio" name="contactMethod" value="messages_phone" checked={(posted?.intent === "quick" ? posted.contactMethod : listing.contactMethod) === "messages_phone"} />
+                  <span>Messages and phone<small>Your phone number is shown on the listing page.</small></span>
+                </label>
+              </fieldset>
+              <button class="btn" type="submit">Save changes</button>
+            </form>
+          </section>
         )
       }
-      {photos.length > 9 && <p class="muted">And {photos.length - 9} more photos.</p>}
     </div>
-    <aside class="card">
-      <p class="price big">{formatPrice(listing.price) || "No price yet"}</p>
-      <div class="spec-row"><span>Mileage</span><span>{formatMiles(listing.mileage) || "Not set"}</span></div>
-      <div class="spec-row"><span>Transmission</span><span>{optionLabel(TRANSMISSIONS, listing.transmission) || "Not set"}</span></div>
-      <div class="spec-row"><span>Drivetrain</span><span>{optionLabel(DRIVETRAINS, listing.drivetrain) || "Not set"}</span></div>
-      <div class="spec-row"><span>Body</span><span>{optionLabel(BODY_STYLES, listing.bodyStyle) || "Not set"}</span></div>
-      <div class="spec-row"><span>Title</span><span>{optionLabel(TITLE_STATUSES, listing.titleStatus) || "Not set"}</span></div>
-      <div class="spec-row"><span>Location</span><span>{[listing.locationCity, listing.locationState].filter(Boolean).join(", ") || "Not set"}</span></div>
-      <div class="spec-row"><span>Offers</span><span>{listing.acceptsOffers ? "Accepted" : "Not accepted"}</span></div>
-      <div class="spec-row"><span>Photos</span><span>{photos.length}</span></div>
+
+    <aside>
+      <div class="card buy">
+        <div class="buy__label">Asking price</div>
+        <div class="buy__price">{formatPrice(listing.price) || "Not set"}</div>
+        {listing.acceptsOffers && listing.status === "live" && <span class="badge badge--ok offer-flag">Accepting offers</span>}
+        <p class="status-note">{explain[listing.status]}</p>
+
+        {
+          listing.reviewNotes && (listing.status === "changes_requested" || listing.status === "rejected") && (
+            <div class="notes">
+              <div class="buy__label">Notes from our reviewer</div>
+              <p class="pre">{listing.reviewNotes}</p>
+            </div>
+          )
+        }
+
+        {isEditable(listing) && <a class="btn block" href={editUrl}>{listing.status === "draft" ? "Continue editing" : "Make changes"}</a>}
+        {publicUrl && <a class="btn btn--secondary block" href={publicUrl}>View public listing</a>}
+        {
+          listing.status === "submitted" && (
+            <form method="post">
+              <input type="hidden" name="intent" value="unsubmit" />
+              <button class="btn btn--secondary block" type="submit">Move back to draft</button>
+            </form>
+          )
+        }
+        {
+          (listing.status === "live" || listing.status === "offer_accepted") && (
+            <>
+              <form method="post" onsubmit="return confirm('Mark this car as sold? Open offers will be closed.')">
+                <input type="hidden" name="intent" value="sold" />
+                <button class="btn block" type="submit">Mark as sold</button>
+              </form>
+              {listing.status === "offer_accepted" && (
+                <form method="post" onsubmit="return confirm('Put this car back on sale? The accepted deal will be cancelled.')">
+                  <input type="hidden" name="intent" value="relist" />
+                  <button class="btn btn--secondary block" type="submit">Put back on sale</button>
+                </form>
+              )}
+              <div class="links">
+                <a href={url("/offers")}>See offers</a>
+                <a href={url("/inbox")}>See messages</a>
+              </div>
+            </>
+          )
+        }
+      </div>
+
+      <div class="trust">
+        <p class="trust__title">{listing.status === "offer_accepted" ? "Closing the deal" : "How it works"}</p>
+        <p>
+          {listing.status === "offer_accepted"
+            ? "Meet the buyer, let them inspect the car, and take payment before you sign over the title. Mark it as sold when you are done, or put it back on sale if the deal falls through."
+            : "A person reviews every listing before it goes live. Buyers message you here or make offers, and you choose what to accept."}
+        </p>
+      </div>
+
+      {
+        listing.status === "draft" && (
+          <form method="post" class="danger" onsubmit="return confirm('Delete this draft and its photos? This cannot be undone.')">
+            <input type="hidden" name="intent" value="delete" />
+            <button class="linkish" type="submit">Delete this draft</button>
+          </form>
+        )
+      }
     </aside>
   </div>
-
-  {
-    listing.status === "draft" && (
-      <form method="post" class="danger" onsubmit="return confirm('Delete this draft and its photos? This cannot be undone.')">
-        <input type="hidden" name="intent" value="delete" />
-        <button class="linkish" type="submit">Delete this draft</button>
-      </form>
-    )
-  }
 </Base>
 
 <style>
-  .label a {
+  .lede {
+    margin-bottom: 20px;
+  }
+  .layout {
+    margin-top: 8px;
+  }
+  .main {
+    display: grid;
+    gap: 16px;
+    min-width: 0;
+  }
+  /* phl-hero */
+  .hero {
+    position: relative;
+    aspect-ratio: 16 / 9;
+    border-radius: var(--radius-card);
+    overflow: hidden;
+    display: grid;
+    place-items: center;
+  }
+  .hero img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .hero__none {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  /* phl-hero-tag */
+  .hero__tag {
+    position: absolute;
+    top: 16px;
+    left: 0;
+    padding: 5px 12px 5px 14px;
+    border-radius: 0 4px 4px 0;
+    background: var(--red);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .thumbs {
+    display: grid;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 6px;
+  }
+  .thumbs img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    border-radius: 6px;
+  }
+  @media (max-width: 720px) {
+    .thumbs {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .mono {
+    font-family: var(--font-mono);
+    font-size: 13px;
+  }
+  .buy {
+    display: grid;
+    gap: 10px;
+  }
+  .offer-flag {
+    justify-self: start;
+  }
+  .status-note {
+    margin: 4px 0 6px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
     color: var(--muted);
+    font-size: 14px;
   }
-  .head {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-wrap: wrap;
+  .notes {
+    padding: 10px 12px;
+    border-left: 4px solid var(--red);
+    background: var(--paper);
   }
-  .head h1 {
+  .notes p {
+    margin: 4px 0 0;
+  }
+  .block {
+    width: 100%;
+  }
+  .buy form {
     margin: 0;
   }
-  .lede {
-    margin-top: 12px;
+  .links {
+    display: flex;
+    justify-content: space-between;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+  .links a {
+    color: var(--ink);
   }
   .pre {
     white-space: pre-wrap;
   }
-  .actions {
-    display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
-    margin-bottom: 24px;
-  }
-  .actions form {
-    margin: 0;
-  }
-  .manage {
-    display: grid;
-    gap: 20px;
-    margin-bottom: 24px;
-  }
-  @media (min-width: 860px) {
-    .manage {
-      grid-template-columns: 1.6fr 1fr;
-      align-items: start;
-    }
-  }
-  .manage h2 {
-    font-size: 20px;
-  }
-  .deal-actions {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .deal-actions form {
-    margin: 0;
-  }
-  .layout {
-    display: grid;
-    gap: 20px;
-  }
-  @media (min-width: 860px) {
-    .layout {
-      grid-template-columns: 1.6fr 1fr;
-      align-items: start;
-    }
-  }
-  .gallery {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 6px;
-  }
-  .gallery img {
-    aspect-ratio: 4 / 3;
-    object-fit: cover;
-    border-radius: 8px;
-    width: 100%;
-  }
-  .gallery img:first-child {
-    grid-column: 1 / -1;
-  }
-  .empty {
-    color: var(--muted);
-    text-align: center;
-    padding: 48px 20px;
-  }
-  .big {
-    font-size: 28px;
-    margin: 0 0 8px;
-  }
   .muted {
     color: var(--muted);
   }
+  .small {
+    font-size: 14px;
+    margin: 0;
+  }
   .danger {
-    margin-top: 32px;
+    text-align: center;
   }
   .linkish {
     border: 0;

@@ -35,7 +35,7 @@ if (Astro.request.method === "POST") {
 ---
 
 <Base title="Message the seller">
-  <p class="label"><a href={url("/inbox")}>Inbox</a></p>
+  <a class="back" href={url("/inbox")}>← Inbox</a>
   <h1 class="page-title">Message the seller</h1>
   <div class="split">
   <CarSummary {...found} size="large" />
@@ -72,9 +72,6 @@ if (Astro.request.method === "POST") {
       grid-template-columns: 1fr;
       gap: 16px;
     }
-  }
-  .label a {
-    color: var(--muted);
   }
   .compose {
 

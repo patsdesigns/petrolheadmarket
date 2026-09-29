@@ -16,10 +16,10 @@ const describedBy = [hint && `${id}-hint`, error && `${id}-error`].filter(Boolea
 
 <div class="field">
   <label for={id}>{label}</label>
-  {hint && <span class="hint" id={`${id}-hint`}>{hint}</span>}
   <select id={id} name={name} aria-invalid={error ? "true" : undefined} aria-describedby={describedBy}>
     <option value="">{placeholder}</option>
     {opts.map((o) => <option value={o.value} selected={o.value === value}>{o.label}</option>)}
   </select>
+  {hint && <span class="hint" id={`${id}-hint`}>{hint}</span>}
   {error && <span class="error" id={`${id}-error`}>{error}</span>}
 </div>

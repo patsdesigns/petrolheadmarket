@@ -313,6 +313,15 @@ The app should feel like the same site. Copy the look, do not invent a new one.
 - Primary button: red background, white bold text, 8px radius. Secondary: white with 1px ink border.
 - Forms: large inputs, labels above, errors under the field in red, 44px minimum tap targets
 
+**Matched to the Webflow site's classes** (read from the site in September 2026)
+- Frame: 1180px content, 20px gutters (`phm-mast-inner`, `phm-grid`).
+- Header (`Site Header` component): sticky; dark bar with 40px roundel (3px red ring), uppercase wordmark 17px/900/0.06em, mono sub line 9.5px `#9BA0A8`; ghost buttons (`#3A3E45` border, `#C8CBD0` text, 13px, 6px radius) and a red Sell button (13px, 6px radius); red promise strip underneath: "Every listing vetted · 20-photo minimum · No auctions · Nothing stale".
+- Page title = `phm-h1` (24px, 900, uppercase). Car title = `phl-title` (42px). Section headings = `phl-h2` (17px uppercase with a 2px ink underline).
+- Badges = `phm-badge` (4px radius, `#EDEDE8`, 9.5px mono). Back links = `phl-back`. Eyebrows = `phl-eyebrow` (red mono).
+- Price box = `phl-buy` (label 10px mono, price 34px mono). Facts grid = `phl-facts`. Dark info box = `phl-trust`. Content plus side column = `phl-layout` (1fr and 360px, 44px gap).
+- Car cards = `phm-card` (10px radius, lift on hover) with striped placeholder and photo count tag.
+- The app's equivalents live in `src/styles/global.css` and `src/components/Header.astro`. If the Webflow site changes, update them to match.
+
 **Principles**
 - Desktop first (changed from mobile first at the owner's request). Design each screen for a 1280 to 1440px desktop: use the width with multi-column layouts, side panels and tables. Write base CSS for desktop and use `max-width` media queries to adapt down. Every screen must still work at 360px with no horizontal scroll, because many sellers upload photos from a phone.
 - Fast. Server render everything, keep client JS to the islands listed above, lazy load images.

@@ -1,180 +1,219 @@
 ---
+// Mirrors the "Site Header" component on the Webflow site (phm-top, phm-mast,
+// phm-promise). Keep class sizes and copy in sync with Webflow.
 import { url, siteUrl } from "../lib/paths";
 
 interface Props {
-  /** Signed-in user, once accounts exist (phase 2). */
   user?: { displayName: string; isAdmin: boolean } | null;
   unread?: number;
 }
 
 const { user = null, unread = 0 } = Astro.props;
+const path = Astro.url.pathname;
+const here = (p: string) => (p === url("/") ? path === p : path.startsWith(p));
 ---
 
-<header class="site-header">
-  <div class="container site-header__inner">
-    <a class="brand" href={siteUrl("/")}>
-      <span class="brand__logo" aria-hidden="true">PH</span>
-      <span class="brand__text">
-        <span class="brand__name">Petrol Head Market</span>
-        <span class="brand__tag">Enthusiast car classifieds</span>
-      </span>
-    </a>
-    <nav class="site-nav" aria-label="Account">
-      {
-        user ? (
-          <>
-            <a href={url("/")}>My garage</a>
-            <a href={url("/inbox")}>
-              Inbox
-              {unread > 0 && (
-                <span class="site-nav__count" aria-label={`${unread} unread`}>
-                  {unread}
-                </span>
-              )}
-            </a>
-            <details class="menu">
-              <summary>
-                {user.displayName}
-                <span aria-hidden="true" class="menu__caret">▾</span>
-              </summary>
-              <div class="menu__panel">
-                <a href={url("/account")}>Account settings</a>
-                <a href={url("/offers")}>Offers</a>
-                {user.isAdmin && <a href={url("/admin")}>Review queue</a>}
-                <form method="post" action={url("/logout")}>
-                  <button type="submit">Sign out</button>
-                </form>
-              </div>
-            </details>
-          </>
-        ) : (
-          <>
-            <a href={siteUrl("/")}>Browse cars</a>
-            <a href={url("/login")}>Sign in</a>
-          </>
-        )
-      }
-      <a class="btn site-nav__sell" href={url("/sell")}>
-        <span class="sell-long">Sell your car</span><span class="sell-short">Sell</span>
+<div class="top">
+  <header class="mast">
+    <div class="mast__inner">
+      <a class="brand" href={siteUrl("/")}>
+        <span class="roundel" aria-hidden="true">PH</span>
+        <span class="wordmark">
+          Petrol Head Market
+          <span class="wordmark__sub">Enthusiast car classifieds</span>
+        </span>
       </a>
-    </nav>
-  </div>
-</header>
+      <nav class="actions" aria-label="Account">
+        {
+          user ? (
+            <>
+              <a class="ghost" href={url("/")} aria-current={here(url("/")) ? "page" : undefined}>My garage</a>
+              <a class="ghost" href={url("/inbox")} aria-current={here(url("/inbox")) ? "page" : undefined}>
+                Inbox
+                {unread > 0 && (
+                  <span class="count" aria-label={`${unread} unread`}>{unread}</span>
+                )}
+              </a>
+              <details class="menu">
+                <summary class="ghost">
+                  {user.displayName}
+                  <span aria-hidden="true" class="menu__caret">▾</span>
+                </summary>
+                <div class="menu__panel">
+                  <a href={url("/account")}>Account settings</a>
+                  <a href={url("/offers")}>Offers</a>
+                  {user.isAdmin && <a href={url("/admin")}>Review queue</a>}
+                  <form method="post" action={url("/logout")}>
+                    <button type="submit">Sign out</button>
+                  </form>
+                </div>
+              </details>
+            </>
+          ) : (
+            <a class="ghost" href={url("/login")}>Sign in</a>
+          )
+        }
+        <a class="sell" href={url("/sell")}>
+          <span class="sell-long">Sell your car</span><span class="sell-short">Sell</span>
+        </a>
+      </nav>
+    </div>
+  </header>
+  <div class="promise">Every listing vetted · 20-photo minimum · No auctions · Nothing stale</div>
+</div>
 
 <style>
-  .site-header {
+  .top {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+  .mast {
     background: var(--ink);
     color: var(--white);
+    font-family: var(--font-ui);
   }
-  .site-header__inner {
+  .mast__inner {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    min-height: 68px;
-    flex-wrap: wrap;
-    padding-top: 10px;
-    padding-bottom: 10px;
+    gap: 14px;
+    max-width: calc(var(--max) + 2 * var(--gutter));
+    margin: 0 auto;
+    padding: 12px var(--gutter);
   }
   .brand {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 14px;
+    color: inherit;
     text-decoration: none;
-    color: var(--white);
   }
-  .brand__logo {
-    display: grid;
-    place-items: center;
+  .roundel {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex: 0 0 40px;
     width: 40px;
     height: 40px;
-    flex: none;
+    border: 3px solid var(--red);
     border-radius: 50%;
     background: var(--white);
     color: var(--ink);
-    box-shadow: 0 0 0 3px var(--red);
+    font-size: 14px;
     font-weight: 900;
-    font-size: 15px;
-    letter-spacing: -0.02em;
+    letter-spacing: 0.02em;
   }
-  .brand__text {
-    display: grid;
-    line-height: 1.15;
-  }
-  .brand__name {
-    font-weight: 900;
+  .wordmark {
     font-size: 17px;
-  }
-  .brand__tag {
-    font-family: var(--font-mono);
-    font-size: 10px;
+    line-height: 1.1;
+    font-weight: 900;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    color: rgba(255, 255, 255, 0.65);
   }
-  .site-nav {
+  .wordmark__sub {
+    display: block;
+    margin-top: 3px;
+    color: #9ba0a8;
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    font-weight: 400;
+    letter-spacing: 0.14em;
+    text-transform: none;
+  }
+  .actions {
     display: flex;
     align-items: center;
-    gap: 4px 18px;
-    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: auto;
   }
-  .site-nav a:not(.btn) {
+  .ghost {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    min-height: var(--tap);
-    color: var(--white);
-    text-decoration: none;
+    padding: 8px 14px;
+    border: 1px solid var(--line-dark);
+    border-radius: 6px;
+    background: transparent;
+    color: #c8cbd0;
+    font-size: 13px;
     font-weight: 600;
+    text-decoration: none;
+    cursor: pointer;
+    white-space: nowrap;
   }
-  .site-nav a:not(.btn):hover {
-    text-decoration: underline;
-    text-underline-offset: 4px;
+  .ghost:hover,
+  .ghost[aria-current="page"] {
+    border-color: #6b7079;
+    color: var(--white);
+  }
+  .sell {
+    padding: 9px 16px;
+    border-radius: 6px;
+    background: var(--red);
+    color: var(--white);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .sell:hover {
+    background: var(--red-dark);
+  }
+  .sell-short {
+    display: none;
+  }
+  .count {
+    display: inline-grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--red);
+    color: var(--white);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
   }
   .menu {
     position: relative;
   }
   .menu summary {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    min-height: var(--tap);
-    font-weight: 600;
-    cursor: pointer;
     list-style: none;
   }
   .menu summary::-webkit-details-marker {
     display: none;
   }
   .menu__caret {
-    font-size: 12px;
+    font-size: 11px;
   }
   .menu__panel {
     position: absolute;
     right: 0;
-    top: 100%;
-    z-index: 20;
-    min-width: 200px;
+    top: calc(100% + 8px);
+    z-index: 60;
+    min-width: 210px;
     display: grid;
     padding: 6px;
     background: var(--white);
     color: var(--ink);
     border: 1px solid var(--line);
     border-radius: 10px;
-    box-shadow: 0 8px 24px rgba(21, 23, 27, 0.15);
+    box-shadow: 0 12px 30px rgba(21, 23, 27, 0.18);
   }
   .menu__panel a,
   .menu__panel button {
     display: flex;
     align-items: center;
     width: 100%;
-    min-height: var(--tap);
+    min-height: 40px;
     padding: 0 12px;
     border: 0;
     border-radius: 6px;
     background: none;
-    color: var(--ink) !important;
+    color: var(--ink);
     font: inherit;
+    font-size: 14px;
     font-weight: 600;
     text-align: left;
     text-decoration: none;
@@ -183,23 +222,39 @@ const { user = null, unread = 0 } = Astro.props;
   .menu__panel a:hover,
   .menu__panel button:hover {
     background: var(--paper);
-    text-decoration: none !important;
   }
   .menu__panel form {
-    margin: 0;
-    border-top: 1px dashed var(--line);
+    margin: 4px 0 0;
     padding-top: 4px;
-    margin-top: 4px;
+    border-top: 1px dashed var(--line);
   }
-  .sell-short {
-    display: none;
+  .promise {
+    padding: 7px 12px;
+    background: var(--red);
+    color: var(--white);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    text-align: center;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
   }
-  @media (max-width: 560px) {
-    .site-nav {
-      gap: 4px 14px;
+
+  /* Small screens: keep the bar on one line. */
+  @media (max-width: 720px) {
+    .wordmark__sub {
+      display: none;
     }
-    .site-nav__sell {
-      padding: 8px 14px;
+    .wordmark {
+      font-size: 14px;
+    }
+    .actions {
+      gap: 6px;
+    }
+    .ghost {
+      padding: 7px 10px;
+    }
+    .sell {
+      padding: 8px 12px;
     }
     .sell-long {
       display: none;
@@ -207,16 +262,22 @@ const { user = null, unread = 0 } = Astro.props;
     .sell-short {
       display: inline;
     }
+    .promise {
+      font-size: 9.5px;
+      letter-spacing: 0.08em;
+    }
   }
-  .site-nav__count {
-    display: inline-grid;
-    place-items: center;
-    min-width: 20px;
-    height: 20px;
-    padding: 0 6px;
-    border-radius: 999px;
-    background: var(--red);
-    font-family: var(--font-mono);
-    font-size: 11px;
+  @media (max-width: 480px) {
+    .mast__inner {
+      flex-wrap: wrap;
+      row-gap: 10px;
+    }
+    .actions {
+      width: 100%;
+      margin-left: 0;
+    }
+    .actions .sell {
+      margin-left: auto;
+    }
   }
 </style>

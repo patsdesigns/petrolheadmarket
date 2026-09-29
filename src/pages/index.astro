@@ -58,19 +58,22 @@ const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_
         <h2 id="listings-h" class="label">Your listings</h2>
         <ul class="cars">
           {mine.map((l) => (
-            <li class="card car">
+            <li class="card tile car">
               <a class="car__link" href={isEditable(l) && l.status === "draft" ? url(`/listings/${l.id}/edit`) : url(`/listings/${l.id}`)}>
-                <div class="car__photo">
-                  {l.mainPhoto ? <img src={l.mainPhoto} alt="" loading="lazy" /> : <span>No photos yet</span>}
+                <div class:list={["car__photo", { stripes: !l.mainPhoto }]}>
+                  {l.mainPhoto && <img src={l.mainPhoto} alt="" loading="lazy" />}
+                  {!l.mainPhoto && <span class="car__nophoto">No photos yet</span>}
+                  <span class="car__count">{l.photoCount} photos</span>
                 </div>
                 <div class="car__body">
-                  <StatusBadge status={l.status} />
-                  <h3>{listingTitle(l)}</h3>
-                  <p class="car__meta">
+                  <div class="car__title-row">
+                    <h3 class="car__name">{listingTitle(l)}</h3>
                     <span class="price">{formatPrice(l.price) || "No price"}</span>
-                    {l.mileage !== null && <span>{formatMiles(l.mileage)} mi</span>}
-                    <span>{l.photoCount} photos</span>
-                  </p>
+                  </div>
+                  <div class="car__specs">
+                    <span>{l.mileage !== null ? `${formatMiles(l.mileage)} mi` : "Mileage not set"}</span>
+                    <StatusBadge status={l.status} />
+                  </div>
                 </div>
               </a>
             </li>
@@ -128,6 +131,10 @@ const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_
   .empty h2 {
     font-size: 24px;
     margin: 0;
+    padding: 0;
+    border: 0;
+    text-transform: none;
+    letter-spacing: 0;
   }
   .empty p {
     margin: 0;
@@ -138,13 +145,8 @@ const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_
     padding: 0;
     margin: 12px 0 0;
     display: grid;
-    gap: 14px;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-  @media (max-width: 1180px) {
-    .cars {
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 22px;
   }
   @media (max-width: 900px) {
     .cars {
@@ -165,41 +167,72 @@ const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_
     text-decoration: none;
     color: inherit;
   }
+  /* phm-photo */
   .car__photo {
+    position: relative;
     aspect-ratio: 4 / 3;
-    background: var(--paper);
     display: grid;
     place-items: center;
-    color: var(--muted);
-    border-bottom: 1px solid var(--line);
   }
   .car__photo img {
+    position: absolute;
+    inset: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
   }
+  .car__nophoto {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  /* phm-photocount */
+  .car__count {
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(21, 23, 27, 0.75);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
   .car__body {
-    padding: 14px 16px 16px;
+    padding: 14px 14px 13px;
   }
-  .car__body h3 {
-    font-size: 19px;
-    margin: 8px 0 6px;
-  }
-  .car__meta {
+  /* phm-title-row, phm-car, phm-price */
+  .car__title-row {
     display: flex;
-    gap: 12px;
-    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .car__name {
     margin: 0;
+    font-size: 16.5px;
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .car__title-row .price {
+    font-size: 16px;
+    white-space: nowrap;
+  }
+  /* phm-specs */
+  .car__specs {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--line);
     color: var(--muted);
     font-family: var(--font-mono);
-    font-size: 12px;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-  .car__meta .price {
-    color: var(--ink);
-  }
-  .car__link:hover h3 {
-    text-decoration: underline;
+    font-size: 11.5px;
   }
 </style>
