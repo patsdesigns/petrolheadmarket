@@ -85,6 +85,12 @@ Key points:
 - Scam filter (`scamCheck` in `src/lib/messaging.ts`) flags wire transfers, Western Union or MoneyGram, gift cards, shipping agents, escrow, crypto, WhatsApp or Telegram, "text me at", email addresses, phone numbers and outside links. Flagged messages are still delivered.
 - Email notification setting (`profiles.email_notifications`) covers new offers, counters, declines and messages. Accepted deal emails always go out.
 
+## Finish (decided in phase 6)
+
+- Seller actions live in `src/lib/seller-actions.ts` and on `/app/listings/:id`: quick changes (price, accepts offers, contact method, phone) for live and offer accepted listings, Mark as sold (from live or offer accepted, closes open offers with an email), and Put back on sale (offer accepted to live, the accepted offer becomes `withdrawn` and the buyer is emailed). Each one syncs the CMS. If the sync fails the change is kept and the seller is told.
+- `GET /app/api/listings/{slug}/photos` is public (CORS `*`, cached 5 minutes) and returns `{ slug, count, photos: [{ url, width, height }] }` with absolute URLs. The same path with a listing UUID is the seller's uploader endpoint. Slugs are never UUIDs, which is how the route tells them apart.
+- `src/pages/404.astro` and `src/pages/500.astro` are the error pages. Signed out visitors to unknown app paths are sent to login first.
+
 ## Environment variables
 
 | Name | Secret | Purpose |

@@ -7,6 +7,9 @@ import { listingPhotos } from "../../../../../db/schema";
 import { MAX_PHOTOS } from "../../../../../lib/listing-options";
 import { getOwnListing, getPhotos, isEditable, photoCount, photoView, touchListing } from "../../../../../lib/listings";
 import { json, jsonError } from "../../../../../lib/api";
+import { getPublicListing } from "../../../../../lib/public-listing";
+import { absoluteUrl } from "../../../../../lib/config";
+import { photoUrl } from "../../../../../lib/paths";
 
 const MAX_BYTES = 8 * 1024 * 1024;
 
@@ -18,9 +21,39 @@ async function editableListing(userId: string | undefined, id: string | undefine
   return { listing };
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * Two uses share this path, told apart by the parameter:
+ * - /app/api/listings/{slug}/photos (public): every photo URL in order, for
+ *   the gallery on the public listing page (the CMS only holds 25).
+ * - /app/api/listings/{id}/photos (seller, signed in): the uploader's list.
+ * App listing IDs are UUIDs; CMS slugs never are.
+ */
 export const GET: APIRoute = async ({ locals, params }) => {
-  if (!locals.user || !params.id) return jsonError("Sign in first.", 401);
-  const listing = await getOwnListing(locals.user.id, params.id);
+  const key = params.id ?? "";
+  if (!UUID.test(key)) {
+    const found = await getPublicListing(key);
+    if (!found) return jsonError("Listing not found.", 404);
+    const photos = await getPhotos(found.listing.id);
+    return new Response(
+      JSON.stringify({
+        slug: key,
+        count: photos.length,
+        photos: photos.map((p) => ({ url: absoluteUrl(photoUrl(p.r2Key)), width: p.width, height: p.height })),
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "public, max-age=300",
+          "Access-Control-Allow-Origin": "*",
+        },
+      },
+    );
+  }
+
+  if (!locals.user) return jsonError("Sign in first.", 401);
+  const listing = await getOwnListing(locals.user.id, key);
   if (!listing) return jsonError("Listing not found.", 404);
   return json({ photos: (await getPhotos(listing.id)).map(photoView) });
 };
