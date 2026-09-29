@@ -84,21 +84,30 @@ const waited = (d: Date | null) => {
 
   {
     queue.length > 0 && (
-      <ol class="queue">
-        {queue.map((r) => (
-          <li class="card item">
-            <a href={url(`/admin/listings/${r.id}`)}>
-              <strong>{listingTitle(r)}</strong>
-              <span class="meta">
-                <span class="price">{formatPrice(r.price)}</span>
-                <span>{photoCounts.get(r.id) ?? 0} photos</span>
-                <span>{r.seller}</span>
-                <span>Waiting {waited(r.submittedAt)}</span>
-              </span>
-            </a>
-          </li>
-        ))}
-      </ol>
+      <table class="table queue">
+        <thead>
+          <tr>
+            <th scope="col">Car</th>
+            <th scope="col">Seller</th>
+            <th scope="col" class="num">Price</th>
+            <th scope="col" class="num">Photos</th>
+            <th scope="col" class="num">Waiting</th>
+            <th scope="col"><span class="sr-only">Action</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {queue.map((r) => (
+            <tr>
+              <td><a class="car" href={url(`/admin/listings/${r.id}`)}>{listingTitle(r)}</a></td>
+              <td data-label="Seller">{r.seller}</td>
+              <td data-label="Price" class="num">{formatPrice(r.price)}</td>
+              <td data-label="Photos" class="num">{photoCounts.get(r.id) ?? 0}</td>
+              <td data-label="Waiting" class="num">{waited(r.submittedAt)}</td>
+              <td class="num"><a class="btn btn--secondary" href={url(`/admin/listings/${r.id}`)}>Review</a></td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     )
   }
 
@@ -145,12 +154,18 @@ const waited = (d: Date | null) => {
     font-size: 20px;
   }
   .queue {
-    list-style: none;
-    padding: 0;
-    margin: 0 0 32px;
-    display: grid;
-    gap: 10px;
-    max-width: 760px;
+    margin-bottom: 40px;
+  }
+  .queue .car {
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
   }
   .item {
     padding: 0;
@@ -185,7 +200,6 @@ const waited = (d: Date | null) => {
     list-style: none;
     padding: 0;
     margin: 0;
-    max-width: 760px;
   }
   .rows .spec-row > :first-child {
     font-family: inherit;

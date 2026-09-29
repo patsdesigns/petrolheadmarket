@@ -13,12 +13,23 @@ const mine = await listForUser(user.id);
 const notice = Astro.url.searchParams.get("notice");
 const needResponse = await offersNeedingResponse(user.id);
 const unread = Astro.locals.unread;
+const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_accepted").length;
 ---
 
 <Base title="My garage">
-  <div class="head">
-    <h1 class="page-title">My garage</h1>
-    {mine.length > 0 && <a class="btn" href={url("/sell")}>List another car</a>}
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">My garage</h1>
+      <p class="lede">Your cars, offers and messages in one place.</p>
+    </div>
+    <a class="btn" href={url("/sell")}>{mine.length > 0 ? "List another car" : "Sell your car"}</a>
+  </div>
+
+  <div class="stats">
+    <div class="card stat"><span class="stat__n">{mine.length}</span><span class="label">Listings</span></div>
+    <div class="card stat"><span class="stat__n">{liveCount}</span><span class="label">Live now</span></div>
+    <a class:list={["card", "stat", { "is-alert": needResponse > 0 }]} href={url("/offers")}><span class="stat__n">{needResponse}</span><span class="label">Offers waiting on you</span></a>
+    <a class:list={["card", "stat", { "is-alert": unread > 0 }]} href={url("/inbox")}><span class="stat__n">{unread}</span><span class="label">Unread messages</span></a>
   </div>
 
   {notice === "deleted" && <Notice tone="ok"><p>Draft deleted.</p></Notice>}
@@ -29,25 +40,6 @@ const unread = Astro.locals.unread;
           <a href={url("/verify-email")}>Confirm your email</a> to submit listings, make offers and message sellers.
         </p>
       </Notice>
-    )
-  }
-
-  {
-    (needResponse > 0 || unread > 0) && (
-      <div class="todo">
-        {needResponse > 0 && (
-          <a class="card todo__item" href={url("/offers")}>
-            <span class="todo__n">{needResponse}</span>
-            <span>{needResponse === 1 ? "Offer needs" : "Offers need"} your response</span>
-          </a>
-        )}
-        {unread > 0 && (
-          <a class="card todo__item" href={url("/inbox")}>
-            <span class="todo__n">{unread}</span>
-            <span>Unread {unread === 1 ? "message" : "messages"}</span>
-          </a>
-        )}
-      </div>
     )
   }
 
@@ -147,7 +139,22 @@ const unread = Astro.locals.unread;
     margin: 12px 0 0;
     display: grid;
     gap: 14px;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  @media (max-width: 1180px) {
+    .cars {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 900px) {
+    .cars {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 560px) {
+    .cars {
+      grid-template-columns: 1fr;
+    }
   }
   .car {
     padding: 0;

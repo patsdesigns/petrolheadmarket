@@ -198,3 +198,15 @@
     columns: 1;
   }
 }
+/* Mouse and trackpad: show photo tools on hover or keyboard focus only. */
+@media (hover: hover) and (pointer: fine) {
+  .pu__tools {
+    opacity: 0;
+    transition: opacity 0.12s ease;
+  }
+  .pu__tile:hover .pu__tools,
+  .pu__tile:focus-within .pu__tools,
+  .pu__tile.is-dragging .pu__tools {
+    opacity: 1;
+  }
+}

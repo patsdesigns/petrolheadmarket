@@ -37,7 +37,9 @@ if (Astro.request.method === "POST") {
 <Base title="Message the seller">
   <p class="label"><a href={url("/inbox")}>Inbox</a></p>
   <h1 class="page-title">Message the seller</h1>
-  <CarSummary {...found} />
+  <div class="split">
+  <CarSummary {...found} size="large" />
+  <div class="split__main">
   <div class="card compose">
     <SafetyNote />
     {!user.emailVerified && (
@@ -53,13 +55,28 @@ if (Astro.request.method === "POST") {
       <button class="btn" type="submit" disabled={!user.emailVerified}>Send message</button>
     </form>
   </div>
+  </div>
+  </div>
 </Base>
 
 <style>
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 32px;
+    align-items: start;
+    margin-top: 8px;
+  }
+  @media (max-width: 900px) {
+    .split {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+  }
   .label a {
     color: var(--muted);
   }
   .compose {
-    max-width: 640px;
+
   }
 </style>

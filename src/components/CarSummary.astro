@@ -7,12 +7,14 @@ interface Props {
   listing: Listing;
   mainPhoto: string | null;
   sellerName: string;
+  /** Large: photo on top, used as the left column on desktop. */
+  size?: "compact" | "large";
 }
-const { listing, mainPhoto, sellerName } = Astro.props;
+const { listing, mainPhoto, sellerName, size = "compact" } = Astro.props;
 const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
 ---
 
-<a class="car-sum card" href={listing.slug ? siteUrl(`/listings/${listing.slug}`) : undefined}>
+<a class:list={["car-sum", "card", { "car-sum--large": size === "large" }]} href={listing.slug ? siteUrl(`/listings/${listing.slug}`) : undefined}>
   {mainPhoto ? <img src={mainPhoto} alt="" /> : <span class="car-sum__ph"></span>}
   <span class="car-sum__body">
     <strong>{listingTitle(listing)}</strong>
@@ -46,6 +48,27 @@ const location = [listing.locationCity, listing.locationState].filter(Boolean).j
     min-width: 0;
   }
   .car-sum strong {
+    font-size: 18px;
+  }
+  .car-sum--large {
+    grid-template-columns: 1fr;
+    padding: 0;
+    overflow: hidden;
+    margin: 0;
+  }
+  .car-sum--large img,
+  .car-sum--large .car-sum__ph {
+    width: 100%;
+    border-radius: 0;
+  }
+  .car-sum--large .car-sum__body {
+    padding: 4px 20px 20px;
+    gap: 6px;
+  }
+  .car-sum--large strong {
+    font-size: 24px;
+  }
+  .car-sum--large .price {
     font-size: 18px;
   }
   .car-sum__meta {

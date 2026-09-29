@@ -1,0 +1,57 @@
+/* Desktop: conversation list on the left, open thread on the right. */
+.inbox {
+  display: grid;
+  grid-template-columns: 360px minmax(0, 1fr);
+  min-height: 560px;
+  background: var(--white);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.inbox__list {
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+  max-height: 78vh;
+}
+.inbox__pane {
+  min-width: 0;
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+}
+.inbox__placeholder {
+  margin: auto;
+  text-align: center;
+  color: var(--muted);
+  max-width: 320px;
+}
+.inbox__back {
+  display: none;
+}
+@media (max-width: 900px) {
+  .inbox {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .inbox__list {
+    border-right: 0;
+    max-height: none;
+  }
+  /* On a thread page, phones show only the thread. */
+  .inbox.has-thread .inbox__list {
+    display: none;
+  }
+  .inbox:not(.has-thread) .inbox__pane {
+    display: none;
+  }
+  .inbox__pane {
+    padding: 18px 16px;
+  }
+  .inbox__back {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--tap);
+    margin-bottom: 4px;
+    color: var(--muted);
+  }
+}

@@ -314,7 +314,7 @@ The app should feel like the same site. Copy the look, do not invent a new one.
 - Forms: large inputs, labels above, errors under the field in red, 44px minimum tap targets
 
 **Principles**
-- Mobile first. Most sellers will upload photos from a phone.
+- Desktop first (changed from mobile first at the owner's request). Design each screen for a 1280 to 1440px desktop: use the width with multi-column layouts, side panels and tables. Write base CSS for desktop and use `max-width` media queries to adapt down. Every screen must still work at 360px with no horizontal scroll, because many sellers upload photos from a phone.
 - Fast. Server render everything, keep client JS to the islands listed above, lazy load images.
 - Sentence case, plain words. Buttons say exactly what happens: "Submit for review", "Send offer", "Accept offer", "Mark as sold".
 - Empty states tell people what to do next.

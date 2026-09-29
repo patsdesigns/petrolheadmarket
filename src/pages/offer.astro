@@ -54,7 +54,9 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
 <Base title="Make an offer">
   <p class="label"><a href={url("/offers")}>Offers</a></p>
   <h1 class="page-title">Make an offer</h1>
-  <CarSummary {...found} />
+  <div class="split">
+  <CarSummary {...found} size="large" />
+  <div class="split__main">
 
   {
     isOwn ? (
@@ -101,14 +103,29 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
       </div>
     )
   }
+  </div>
+  </div>
 </Base>
 
 <style>
+  .split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+    gap: 32px;
+    align-items: start;
+    margin-top: 8px;
+  }
+  @media (max-width: 900px) {
+    .split {
+      grid-template-columns: 1fr;
+      gap: 16px;
+    }
+  }
   .label a {
     color: var(--muted);
   }
   .offer {
-    max-width: 560px;
+
   }
   .muted {
     color: var(--muted);

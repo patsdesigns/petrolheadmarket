@@ -100,11 +100,17 @@ const waitingOnMe = (t: OfferThread) =>
 ---
 
 <Base title="Offers">
-  <h1 class="page-title">Offers</h1>
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Offers</h1>
+      <p class="lede">Offers expire after 72 hours. Accepting one shares contact details with the other person.</p>
+    </div>
+  </div>
   {Astro.url.searchParams.get("sent") && <Notice tone="ok"><p>Offer sent. We will email you when the seller responds.</p></Notice>}
   {done && doneText[done] && <Notice tone="ok"><p>{doneText[done]}</p></Notice>}
   {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
 
+  <div class="columns">
   {
     [
       { title: "Offers on your cars", list: received, empty: "No offers yet. When buyers make offers on your cars, they show up here." },
@@ -206,12 +212,24 @@ const waitingOnMe = (t: OfferThread) =>
       </section>
     ))
   }
+  </div>
 </Base>
 
 <style>
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    align-items: start;
+  }
   .section {
     margin-bottom: 32px;
-    max-width: 760px;
+    min-width: 0;
+  }
+  @media (max-width: 1000px) {
+    .columns {
+      grid-template-columns: 1fr;
+    }
   }
   .offers {
     list-style: none;
