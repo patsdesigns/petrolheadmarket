@@ -2,7 +2,7 @@ import { defineMiddleware } from "astro:middleware";
 import { getAuth } from "./lib/auth";
 import { ensureProfile } from "./lib/profile";
 import { publicOrigin } from "./lib/config";
-import { basePath, url } from "./lib/paths";
+import { basePath, siteUrl, url } from "./lib/paths";
 import { safeNext } from "./lib/forms";
 import { unreadCount } from "./lib/messaging";
 
@@ -81,6 +81,12 @@ export const onRequest = defineMiddleware(async (context, next) => {
   }
 
   const signedIn = context.locals.user !== null;
+
+  // Signed-out visitors to the app's front door go to the Lot (the public
+  // home page), not a sign-in form. Deeper links still go to sign in.
+  if (!signedIn && path === "/" && request.method === "GET") {
+    return context.redirect(siteUrl("/"), 303);
+  }
 
   if (!signedIn && !matches(path, PUBLIC_PREFIXES)) {
     const back = `${context.url.pathname}${context.url.search}`;
