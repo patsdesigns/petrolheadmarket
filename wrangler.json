@@ -2,6 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "petrolheadmarket",
   "compatibility_date": "2025-04-15",
+  "keep_vars": true,
   "compatibility_flags": [
     "nodejs_compat"
   ],
