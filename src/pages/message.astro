@@ -58,13 +58,13 @@ if (found && Astro.request.method === "POST") {
 }
 ---
 
-<Base title="Message the seller">
+<Base title="Message the Seller">
   {notOpen || !found ? (
     <NotOnApp reason={notOpen ?? "missing"} slug={slug} action="message" />
   ) : (
   <>
   <a class="back" href={url("/inbox")}>← Inbox</a>
-  <h1 class="page-title">Message the seller</h1>
+  <h1 class="page-title">Message the Seller</h1>
   <div class="split">
   <CarSummary {...found} size="large" />
   <div class="split__main">

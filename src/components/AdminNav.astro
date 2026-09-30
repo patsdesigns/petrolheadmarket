@@ -8,7 +8,7 @@ interface Props {
 const { current } = Astro.props;
 const counts = Astro.locals.adminCounts;
 const tabs = [
-  { key: "queue", label: "Review queue", href: url("/admin"), n: counts?.review ?? 0, what: "waiting for review" },
+  { key: "queue", label: "Review Queue", href: url("/admin"), n: counts?.review ?? 0, what: "waiting for review" },
   { key: "listings", label: "Listings", href: url("/admin/listings"), n: 0, what: "" },
   { key: "users", label: "Users", href: url("/admin/users"), n: 0, what: "" },
   { key: "flags", label: "Flagged", href: url("/admin/flags"), n: counts?.flags ?? 0, what: "not reviewed" },

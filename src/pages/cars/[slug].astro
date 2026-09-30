@@ -58,11 +58,11 @@ const facts = [
 ].filter(([, v]) => v !== null && v !== undefined && v !== "") as [string, string | number][];
 
 const sections = [
-  { id: "story", title: "The story", html: toParagraphs(listing.description) },
+  { id: "story", title: "The Story", html: toParagraphs(listing.description) },
   { id: "highlights", title: "Highlights", html: toList(listing.highlights) },
-  { id: "issues", title: "Known issues", html: toList(listing.knownIssues), issues: true },
+  { id: "issues", title: "Known Issues", html: toList(listing.knownIssues), issues: true },
   { id: "mods", title: "Modifications", html: toList(listing.modifications) },
-  { id: "service", title: "Service history", html: toParagraphs(listing.serviceHistory) },
+  { id: "service", title: "Service History", html: toParagraphs(listing.serviceHistory) },
 ].filter((s) => s.html);
 
 const statusNote = isSold
@@ -211,7 +211,7 @@ const jsonLd = {
             <>
               <p class="buy__note">This is your listing.</p>
               <a class="btn buy__btn" href={url(`/listings/${listing.id}`)}>Manage this listing</a>
-              <a class="btn btn--secondary buy__btn" href={url(GARAGE)}>My garage</a>
+              <a class="btn btn--secondary buy__btn" href={url(GARAGE)}>My Garage</a>
             </>
           ) : (
             <>
@@ -235,7 +235,7 @@ const jsonLd = {
         </p>
       </div>
       <div class="trust">
-        <p class="trust__title">Buy safely</p>
+        <p class="trust__title">Buy Safely</p>
         <p>Every listing is reviewed by a person before it goes live. Keep the conversation here, see the car and the title in person, and never wire money or send a deposit before you have.</p>
       </div>
     </aside>

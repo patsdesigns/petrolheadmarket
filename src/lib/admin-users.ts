@@ -224,7 +224,7 @@ export async function confirmEmail(adminId: string, userId: string): Promise<Adm
 export async function adminResetLink(adminId: string, userId: string): Promise<AdminResult & { link?: string; email?: string }> {
   const u = await target(userId);
   if (!u) return { ok: false, error: "That account no longer exists." };
-  if (isAdminEmail(u.email)) return { ok: false, error: "Owner accounts use the Site owner reset on the password reset page." };
+  if (isAdminEmail(u.email)) return { ok: false, error: "Owner accounts use the Site Owner reset on the password reset page." };
   const p = await getDb().select({ suspendedAt: profiles.suspendedAt }).from(profiles).where(eq(profiles.userId, userId)).get();
   if (p?.suspendedAt) return { ok: false, error: "Unsuspend the account first." };
 

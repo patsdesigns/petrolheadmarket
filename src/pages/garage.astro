@@ -27,10 +27,10 @@ const todoParts = todo
 const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_accepted").length;
 ---
 
-<Base title="My garage">
+<Base title="My Garage">
   <div class="page-head">
     <div>
-      <h1 class="page-title">My garage</h1>
+      <h1 class="page-title">My Garage</h1>
       <p class="lede">Your cars, offers and messages in one place.</p>
     </div>
     <a class="btn" href={url("/sell")}>{mine.length > 0 ? "List another car" : "Sell your car"}</a>
@@ -70,7 +70,7 @@ const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_
   {
     mine.length === 0 ? (
       <div class="card empty">
-        <h2>Ready to sell your car?</h2>
+        <h2>Ready to Sell Your Car?</h2>
         <p>
           List it for free. A real person reviews every listing before it goes live, so buyers know they are looking at
           an honest car.
@@ -79,7 +79,7 @@ const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_
       </div>
     ) : (
       <section aria-labelledby="listings-h">
-        <h2 id="listings-h" class="label">Your listings</h2>
+        <h2 id="listings-h" class="label">Your Listings</h2>
         <ul class="cars">
           {mine.map((l) => (
             <li class="card tile car">

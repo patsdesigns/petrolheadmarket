@@ -151,8 +151,8 @@ const waitingOnMe = (t: OfferThread) =>
   <div class="columns">
   {
     [
-      { title: "Offers on your cars", list: received, empty: "No offers yet. When buyers make offers on your cars, they show up here." },
-      { title: "Offers you made", list: sent, empty: "You have not made any offers. Find a car you like on the site and tap Make an offer." },
+      { title: "Offers on Your Cars", list: received, empty: "No offers yet. When buyers make offers on your cars, they show up here." },
+      { title: "Offers You Made", list: sent, empty: "You have not made any offers. Find a car you like on the site and tap Make an offer." },
     ]
       // Sections with offers in them come first.
       .sort((x, y) => Number(y.list.length > 0) - Number(x.list.length > 0))

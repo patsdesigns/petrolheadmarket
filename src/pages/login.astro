@@ -38,7 +38,7 @@ if (Astro.request.method === "POST") {
 const notice = Astro.url.searchParams.get("notice");
 ---
 
-<AuthLayout title="Sign in" lede="Sign in to sell your car, make offers and message sellers.">
+<AuthLayout title="Sign In" lede="Sign in to sell your car, make offers and message sellers.">
   {notice === "signed-out" && <Notice tone="ok"><p>You are signed out.</p></Notice>}
   {notice === "password-reset" && <Notice tone="ok"><p>Your password was changed. Sign in with the new one.</p></Notice>}
   {formError && <Notice tone="error"><p>{formError}</p></Notice>}

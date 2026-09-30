@@ -139,9 +139,9 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
 ---
 
 <Base title={`${step.title} | ${title}`}>
-  <a class="back" href={url(GARAGE)}>← My garage</a>
+  <a class="back" href={url(GARAGE)}>← My Garage</a>
   <p class="eyebrow"><span>{title}</span><span>{listing.status === "changes_requested" ? "Changes requested" : "Draft"}</span></p>
-  <h1 class="page-title">{isChanges ? "Update your listing" : "Sell your car"}</h1>
+  <h1 class="page-title">{isChanges ? "Update Your Listing" : "Sell Your Car"}</h1>
 
   <div class="wiz">
   <nav class="steps" aria-label="Listing steps">
@@ -354,7 +354,7 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
           </form>
           <p class="muted small">
             A person reviews every listing, usually within a day.
-            {emailConfigured() ? "We will email you when it is live or if anything needs changing." : "Check My garage for updates."}
+            {emailConfigured() ? "We will email you when it is live or if anything needs changing." : "Check My Garage for updates."}
           </p>
         </>
       )
@@ -397,7 +397,7 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
       {step.key === "review" && (
         <ol>
           <li>A person reviews your listing, usually within a day.</li>
-          <li>If anything needs changing, {emailConfigured() ? "we email you a note" : "you see a note in My garage"}.</li>
+          <li>If anything needs changing, {emailConfigured() ? "we email you a note" : "you see a note in My Garage"}.</li>
           <li>Once approved it goes live and buyers can message you or make offers.</li>
         </ol>
       )}
@@ -566,7 +566,7 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
     dirty = false;
   });
 
-  // Links (steps, still to do, My garage, the header): save first, then go.
+  // Links (steps, still to do, My Garage, the header): save first, then go.
   // If the save fails or some fields were not saved, stay so the seller sees why.
   document.addEventListener(
     "click",

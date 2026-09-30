@@ -52,7 +52,7 @@ const facts = (c: LotCard) => [miles(c.mileage), c.transmission, c.location].fil
 // "Just listed" for three days. Computed per request (never at module scope).
 const now = Date.now();
 const justListed = (c: LotCard) => c.status === "live" && !!c.publishedAt && now - c.publishedAt.getTime() < 3 * 86_400_000;
-const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast cars for sale";
+const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
 ---
 
 <Base
@@ -61,16 +61,16 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast cars for sale";
   description="Enthusiast cars for sale by their owners. Every listing is reviewed by a person. Fixed prices and offers, no auctions."
   image={feature?.photo ? new URL(feature.photo.url, Astro.url).toString() : undefined}
 >
-  <h1 class="sr-only">Enthusiast cars for sale</h1>
+  <h1 class="sr-only">Enthusiast Cars for Sale</h1>
 
   <form class="lot" id="lot" method="get" action={url("/")} data-lot role="search" aria-label="Filter cars">
     <div class="toolbar" role="group" aria-label="Filters">
       <select class:list={["chip", { "is-set": q.ymin !== null }]} name="ymin" aria-label="Year from">
-        <option value="">Year from</option>
+        <option value="">Year From</option>
         {lot.years.map((y) => <option value={y} selected={y === q.ymin}>From {y}</option>)}
       </select>
       <select class:list={["chip", { "is-set": q.ymax !== null }]} name="ymax" aria-label="Year to">
-        <option value="">Year to</option>
+        <option value="">Year To</option>
         {lot.years.map((y) => <option value={y} selected={y === q.ymax}>To {y}</option>)}
       </select>
       <select class:list={["chip", { "is-set": !!q.make }]} name="make" aria-label="Make">
@@ -120,12 +120,12 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast cars for sale";
               stroke="currentColor"
               stroke-width="2"></circle><circle cx="10" cy="17" r="2" fill="none" stroke="currentColor" stroke-width="2"></circle></svg
           >
-          More filters
+          More Filters
           {moreOn > 0 && <span class="count">{moreOn}</span>}
         </summary>
         <div class="more">
           <div class="more__head">
-            <h2 class="more__title">More filters</h2>
+            <h2 class="more__title">More Filters</h2>
           </div>
           <div class="more__groups">
             {
@@ -188,7 +188,7 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast cars for sale";
 
     <section class="lot__results" aria-labelledby="results-h">
       <div class="lot__bar">
-        <h2 class="lot__count" id="results-h">{feature ? "Just in" : carsText(lot.total)}</h2>
+        <h2 class="lot__count" id="results-h">{feature ? "Just In" : carsText(lot.total)}</h2>
         {feature && <span class="lot__of">{carsText(lot.total)} for sale</span>}
         {
           q.q && (
@@ -210,7 +210,7 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast cars for sale";
           <div class="lot__empty card">
             {lot.lotSize === 0 ? (
               <>
-                <h2>No cars on the Lot yet</h2>
+                <h2>No Cars on the Lot Yet</h2>
                 <p>Every car here is reviewed by a person before it goes live. Be one of the first to list yours.</p>
                 <a class="btn" href={url("/sell")}>
                   Sell your car
@@ -218,7 +218,7 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast cars for sale";
               </>
             ) : (
               <>
-                <h2>No cars match {q.q ? `“${q.q}”` : "these filters"}</h2>
+                <h2>No Cars Match {q.q ? `“${q.q}”` : "These Filters"}</h2>
                 <p>Try fewer filters or a shorter search.</p>
                 <a class="btn" href={url("/")}>
                   Clear search and filters

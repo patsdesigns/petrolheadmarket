@@ -5,7 +5,7 @@ import { getDb } from "../db/client";
 export interface AdminCounts {
   /** Listings submitted and waiting for a decision. */
   review: number;
-  /** Contact the team messages not yet marked handled. */
+  /** Contact the Team messages not yet marked handled. */
   contact: number;
   /** Flagged messages and offer notes not yet reviewed. */
   flags: number;

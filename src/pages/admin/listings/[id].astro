@@ -89,7 +89,7 @@ if (Astro.request.method === "POST") {
   } else if (intent === "approve") {
     const issues = checklist(listing, (await getPhotos(id)).length);
     if (listing.status !== "submitted") actionError = "Only listings in review can be approved.";
-    else if (issues.length) actionError = "This listing does not pass the checklist yet. Fix it with Edit listing, or request changes.";
+    else if (issues.length) actionError = "This listing does not pass the checklist yet. Fix it with Edit Listing, or request changes.";
     else {
       const won = await db
         .update(listings)
@@ -197,7 +197,7 @@ const fmtDate = (d: Date | null | undefined) =>
 ---
 
 <Base title={`Review: ${title}`}>
-  <a class="back" href={url("/admin")}>← Review queue</a>
+  <a class="back" href={url("/admin")}>← Review Queue</a>
   <div class="head">
     <h1 class="page-title">{title}</h1>
     <StatusBadge status={listing.status} />
@@ -208,7 +208,7 @@ const fmtDate = (d: Date | null | undefined) =>
 
   {params.get("published") && (
     <Notice tone="ok"><p>Approved. It is live on the Lot.{listing.slug && <> <a href={carUrl(listing.slug)}>View it on the Lot</a>.</>}{" "}
-      {emailConfigured() ? "The seller was emailed." : "Email is not set up, so the seller sees it in My garage."}</p></Notice>
+      {emailConfigured() ? "The seller was emailed." : "Email is not set up, so the seller sees it in My Garage."}</p></Notice>
   )}
   {params.get("publish_failed") && (
     <Notice tone="error"><p>Approved, but it could not go live. The error is below. Use Publish now to try again, or move it back to review.</p></Notice>
@@ -266,18 +266,18 @@ const fmtDate = (d: Date | null | undefined) =>
       </section>
 
       <section class="card" aria-labelledby="story-h">
-        <h2 id="story-h">What the seller wrote</h2>
+        <h2 id="story-h">What the Seller Wrote</h2>
         {listing.headline && <p class="headline">{listing.headline}</p>}
         <h3>Description</h3><p class="pre">{listing.description}</p>
-        <h3>Known issues</h3><p class="pre">{listing.knownIssues}</p>
+        <h3>Known Issues</h3><p class="pre">{listing.knownIssues}</p>
         {listing.highlights && (<><h3>Highlights</h3><p class="pre">{listing.highlights}</p></>)}
         {listing.modifications && (<><h3>Modifications</h3><p class="pre">{listing.modifications}</p></>)}
-        {listing.serviceHistory && (<><h3>Service history</h3><p class="pre">{listing.serviceHistory}</p></>)}
+        {listing.serviceHistory && (<><h3>Service History</h3><p class="pre">{listing.serviceHistory}</p></>)}
         {listing.videoUrl && (<><h3>Video</h3><p><a href={listing.videoUrl} target="_blank" rel="noopener">{listing.videoUrl}</a></p></>)}
       </section>
 
       <details class="card edit" open={Object.keys(errors).length > 0}>
-        <summary><h2>Edit listing</h2></summary>
+        <summary><h2>Edit Listing</h2></summary>
         <form method="post" novalidate>
           <input type="hidden" name="intent" value="save" />
           <div class="field-row field-row--3">

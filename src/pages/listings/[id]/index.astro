@@ -78,19 +78,19 @@ const publicUrl =
     : null;
 
 const emailOn = emailConfigured();
-// A mailto to SUPPORT_EMAIL when set, otherwise the Contact the team form.
+// A mailto to SUPPORT_EMAIL when set, otherwise the Contact the Team form.
 const byEmail = Boolean(supportEmail());
 const changeHref = contactHref("listing", { subject: `Change to ${title} (${listing.id})`, listingId: listing.id });
 const questionHref = contactHref("listing", { subject: `Question about ${title} (${listing.id})`, listingId: listing.id });
 const updatesLine = emailOn
   ? "We will email you when it is live or if anything needs changing."
-  : "Check My garage for updates.";
+  : "Check My Garage for updates.";
 
 const explain: Record<string, string> = {
   draft: "Only you can see this draft. Finish the steps and submit it for review.",
   submitted: `Our team is reviewing your listing. This usually takes less than a day. ${updatesLine}`,
   changes_requested: "Our reviewer asked for a few changes. Update the listing and submit it again.",
-  approved: "Approved. Our team is putting it on the Lot now. Check My garage for updates.",
+  approved: "Approved. Our team is putting it on the Lot now. Check My Garage for updates.",
   live: `Your listing is live on ${SITE_NAME}.`,
   offer_accepted: "You accepted an offer. Mark it as sold when the deal is done.",
   sold: "Sold. Congratulations.",
@@ -108,7 +108,7 @@ const deleteConfirm =
 ---
 
 <Base title={title}>
-  <a class="back" href={url(GARAGE)}>← My garage</a>
+  <a class="back" href={url(GARAGE)}>← My Garage</a>
   <p class="eyebrow">
     <span>{STATUS_LABELS[listing.status]}</span>
     {location && <span>{location}</span>}
@@ -158,7 +158,7 @@ const deleteConfirm =
       {
         (listing.status === "live" || listing.status === "offer_accepted") && (
           <section class="card quick" aria-labelledby="quick-h">
-            <h2 id="quick-h">Quick changes</h2>
+            <h2 id="quick-h">Quick Changes</h2>
             <p class="muted">
               These update the public listing right away. Any other change is made by our team:{" "}
               <a href={changeHref}>ask our team to make a change</a>.
@@ -203,7 +203,7 @@ const deleteConfirm =
             <div class="notes">
               <div class="buy__label">{listing.status === "withdrawn" ? "Notes from our team" : "Notes from our reviewer"}</div>
               <p class="pre">{listing.reviewNotes}</p>
-              {(listing.status === "rejected" || listing.status === "withdrawn") && <p><a href={questionHref}>{byEmail ? "Questions? Email our team" : "Questions? Contact the team"}</a></p>}
+              {(listing.status === "rejected" || listing.status === "withdrawn") && <p><a href={questionHref}>{byEmail ? "Questions? Email our team" : "Questions? Contact the Team"}</a></p>}
             </div>
           )
         }
@@ -244,7 +244,7 @@ const deleteConfirm =
       </div>
 
       <div class="trust">
-        <p class="trust__title">{listing.status === "offer_accepted" ? "Closing the deal" : "How it works"}</p>
+        <p class="trust__title">{listing.status === "offer_accepted" ? "Closing the Deal" : "How It Works"}</p>
         <p>
           {listing.status === "offer_accepted"
             ? "Meet the buyer, let them inspect the car, and take payment before you sign over the title. Mark it as sold when you are done, or put it back on sale if the deal falls through."

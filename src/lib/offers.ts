@@ -318,10 +318,10 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
       paragraphs: [
         `Your ${title} deal with ${buyer.displayName} for ${formatPrice(offer.amount)} is agreed.`,
         `Contact the buyer to arrange an inspection and payment: ${buyer.displayName}, ${buyer.email}.`,
-        "When the sale is done, mark the car as sold in My garage. If the deal falls through, you can relist it.",
+        "When the sale is done, mark the car as sold in My Garage. If the deal falls through, you can relist it.",
       ],
-      // Through sign in, so a signed-out seller lands in My garage after signing in.
-      action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`) },
+      // Through sign in, so a signed-out seller lands in My Garage after signing in.
+      action: { label: "Open My Garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`) },
     }).catch((e) => console.error("[offers] accept email failed", safeError(e))),
   ]);
 

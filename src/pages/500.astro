@@ -15,7 +15,7 @@ interface Props {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>Something went wrong | {SITE_NAME}</title>
+    <title>Something Went Wrong | {SITE_NAME}</title>
   </head>
   <body>
     <header class="bar">
@@ -23,13 +23,13 @@ interface Props {
     </header>
     <main>
       <div class="container">
-        <h1 class="page-title">Something went wrong</h1>
+        <h1 class="page-title">Something Went Wrong</h1>
         <p class="lede">
           Sorry, that did not work, and what you just sent may not have been saved. Go back, check your changes and try
           again in a moment.
         </p>
         <p style="display:flex;gap:12px;flex-wrap:wrap">
-          {/* Sign in forwards signed-in people straight to My garage. */}
+          {/* Sign in forwards signed-in people straight to My Garage. */}
           <a class="btn" href={`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`}>Go to my garage</a>
           <a class="btn btn--secondary" href={siteUrl("/")}>Browse cars</a>
         </p>

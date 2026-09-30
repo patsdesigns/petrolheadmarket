@@ -57,7 +57,7 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
         {
           user ? (
             <>
-              <a class="ghost" href={url(GARAGE)} aria-current={here(url(GARAGE)) ? "page" : undefined}>My garage</a>
+              <a class="ghost" href={url(GARAGE)} aria-current={here(url(GARAGE)) ? "page" : undefined}>My Garage</a>
               <a class="ghost" href={url("/inbox")} aria-current={here(url("/inbox")) ? "page" : undefined}>
                 Inbox
                 {unread > 0 && (
@@ -73,26 +73,26 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
                   <span aria-hidden="true" class="menu__caret">▾</span>
                 </summary>
                 <div class="menu__panel">
-                  <a href={url("/account")}>Account settings</a>
+                  <a href={url("/account")}>Account Settings</a>
                   <a href={url("/offers")}>Offers</a>
                   {user.isAdmin && (
                     <a href={url("/admin")}>
-                      Review queue
+                      Review Queue
                       {adminTodo > 0 && <span class="count" aria-label={`${adminTodo} waiting`}>{adminTodo}</span>}
                     </a>
                   )}
                   <form method="post" action={url("/logout")}>
-                    <button type="submit">Sign out</button>
+                    <button type="submit">Sign Out</button>
                   </form>
                 </div>
               </details>
             </>
           ) : (
-            <a class="ghost" href={url("/login")}>Sign in</a>
+            <a class="ghost" href={url("/login")}>Sign In</a>
           )
         }
         <a class="sell" href={url("/sell")}>
-          <span class="sell-long">Sell your car</span><span class="sell-short">Sell</span>
+          <span class="sell-long">Sell Your Car</span><span class="sell-short">Sell</span>
         </a>
       </nav>
     </div>

@@ -340,7 +340,7 @@ export default function PhotoUploader({ endpoint, initialPhotos, min, max }: Pro
       )}
 
       <details className="pu__shots">
-        <summary>Suggested shots</summary>
+        <summary>Suggested Shots</summary>
         <ul>
           {SHOT_LIST.map((s) => (
             <li key={s}>{s}</li>

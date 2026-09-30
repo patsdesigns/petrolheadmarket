@@ -86,7 +86,7 @@ const demoText: Record<string, [string, "ok" | "error"]> = {
 const demos = await demoCount();
 const emailNote = emailConfigured()
   ? "The seller was emailed your note."
-  : "Email is not set up, so the seller was not emailed. They see your note in My garage.";
+  : "Email is not set up, so the seller was not emailed. They see your note in My Garage.";
 
 const waited = (d: Date | null) => {
   if (!d) return "";
@@ -95,9 +95,9 @@ const waited = (d: Date | null) => {
 };
 ---
 
-<Base title="Review queue">
+<Base title="Review Queue">
   <AdminNav current="queue" />
-  <h1 class="page-title">Review queue</h1>
+  <h1 class="page-title">Review Queue</h1>
   <p class="lede">{queue.length === 0 ? "Nothing waiting. Nice." : `${queue.length} waiting, oldest first.`}</p>
   {done && doneText[done] && <Notice tone="ok"><p>{doneText[done]} {emailNote}</p></Notice>}
   {done && demoText[done] && <Notice tone={demoText[done][1]}><p>{demoText[done][0]}</p></Notice>}
@@ -105,7 +105,7 @@ const waited = (d: Date | null) => {
   {
     stuck.length > 0 && (
       <section class="card warn">
-        <h2>Approved, not live yet</h2>
+        <h2>Approved, Not Live Yet</h2>
         <p class="muted">These were approved but did not go live. Open one to see the error and publish it now.</p>
         <ul class="rows">
           {stuck.map((r) => (
@@ -151,7 +151,7 @@ const waited = (d: Date | null) => {
   {
     recent.length > 0 && (
       <section class="recent">
-        <h2 class="label">Recently reviewed</h2>
+        <h2 class="label">Recently Reviewed</h2>
         <ul class="rows">
           {recent.map((r) => (
             <li class="spec-row">
@@ -166,7 +166,7 @@ const waited = (d: Date | null) => {
   }
 
   <section class="card demo" aria-labelledby="demo-h">
-    <h2 id="demo-h">Demo cars</h2>
+    <h2 id="demo-h">Demo Cars</h2>
     {
       demos > 0 ? (
         <>

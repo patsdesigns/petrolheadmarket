@@ -37,7 +37,7 @@ const RULES: Record<LimitAction, { email: Rule; ip: Rule }> = {
   signup: { email: { max: 3, windowSec: 3600 }, ip: { max: 50, windowSec: 3600 } },
   // Anything that emails a link: password reset, confirm email, change email.
   email: { email: { max: 3, windowSec: 3600 }, ip: { max: 50, windowSec: 3600 } },
-  // The Contact the team form (src/lib/contact.ts).
+  // The Contact the Team form (src/lib/contact.ts).
   contact: { email: { max: 3, windowSec: 3600 }, ip: { max: 20, windowSec: 3600 } },
 };
 

@@ -15,10 +15,10 @@ interface Props {
 const { reason, slug, action } = Astro.props;
 const title =
   reason === "sample"
-    ? "We couldn't find that car"
+    ? "We Couldn't Find That Car"
     : reason === "gone"
-      ? "This car is no longer on the Lot"
-      : "Pick a car on the Lot first";
+      ? "This Car Is No Longer on the Lot"
+      : "Pick a Car on the Lot First";
 const text =
   reason === "sample"
     ? "The link may be old or mistyped. Every car for sale is on the Lot."
@@ -28,7 +28,7 @@ const text =
 ---
 
 <div class="not-open card">
-  <p class="eyebrow">{action === "offer" ? "Make an offer" : "Message the seller"}</p>
+  <p class="eyebrow">{action === "offer" ? "Make an Offer" : "Message the Seller"}</p>
   <h1 class="page-title">{title}</h1>
   <p class="lede">{text}</p>
   <p class="not-open__actions">

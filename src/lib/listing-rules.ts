@@ -132,21 +132,21 @@ export type ListingField = keyof typeof FIELD_RULES;
 export const STEPS = [
   {
     key: "car",
-    title: "The car",
+    title: "The Car",
     fields: ["year", "make", "model", "bodyStyle", "engine", "transmission", "drivetrain", "exteriorColor", "interiorColor", "mileage", "vin", "headline"],
   },
   {
     key: "history",
-    title: "Condition and history",
+    title: "Condition and History",
     fields: ["description", "highlights", "knownIssues", "modifications", "serviceHistory", "ownerCount", "titleStatus", "titleState", "recordsOnFile", "videoUrl"],
   },
   { key: "photos", title: "Photos", fields: [] },
   {
     key: "price",
-    title: "Price and contact",
+    title: "Price and Contact",
     fields: ["price", "acceptsOffers", "locationCity", "locationState", "contactMethod", "contactPhone"],
   },
-  { key: "review", title: "Review and submit", fields: [] },
+  { key: "review", title: "Review and Submit", fields: [] },
 ] as const satisfies readonly { key: string; title: string; fields: readonly ListingField[] }[];
 
 export type StepKey = (typeof STEPS)[number]["key"];

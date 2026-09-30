@@ -35,8 +35,8 @@ export async function notifySellerLive(seller: Seller, listingId: string, title:
       `Good news, ${seller.name}. Your ${title} passed review and is now live on ${SITE_NAME}.`,
       // Only promise message and offer emails when the seller gets them.
       seller.notify === false
-        ? "Buyers' messages and offers show up in your inbox and on the Offers page. You can change the price, offers and contact settings any time from My garage."
-        : "We will email you when a buyer sends a message or an offer. You can change the price, offers and contact settings any time from My garage.",
+        ? "Buyers' messages and offers show up in your inbox and on the Offers page. You can change the price, offers and contact settings any time from My Garage."
+        : "We will email you when a buyer sends a message or an offer. You can change the price, offers and contact settings any time from My Garage.",
     ],
     action: { label: "See your listing", url: absoluteUrl(carUrl(slug)) },
   }).catch((err) => console.error("[notify] live email failed", listingId, safeError(err)));
@@ -65,6 +65,6 @@ export async function notifySellerRejected(seller: Seller, listingId: string, ti
       questionsLine(listingId),
     ],
     // Through sign in, so a signed-out seller lands on the page after signing in.
-    action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`) },
+    action: { label: "Open My Garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`) },
   }).catch((err) => console.error("[notify] rejected email failed", listingId, safeError(err)));
 }

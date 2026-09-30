@@ -150,7 +150,7 @@ const handle = async (context: APIContext, next: MiddlewareNext): Promise<Respon
         // Header badge; API calls don't render the header.
         if (!path.startsWith("/api/")) {
           context.locals.unread = await unreadCount(data.user.id);
-          // Admin to-do counts for the header, admin tabs and My garage.
+          // Admin to-do counts for the header, admin tabs and My Garage.
           // With email off this is how the owner hears about new work.
           if (profile.role === "admin") context.locals.adminCounts = await adminCounts();
         }

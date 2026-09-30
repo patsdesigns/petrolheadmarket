@@ -73,13 +73,13 @@ if (found && Astro.request.method === "POST" && !isOwn && !closed) {
 }
 ---
 
-<Base title="Make an offer">
+<Base title="Make an Offer">
   {notOpen || !found ? (
     <NotOnApp reason={notOpen ?? "missing"} slug={slug} action="offer" />
   ) : (
   <>
   <a class="back" href={url("/offers")}>← Offers</a>
-  <h1 class="page-title">Make an offer</h1>
+  <h1 class="page-title">Make an Offer</h1>
   <div class="split">
   <CarSummary {...found} size="large" />
   <div class="split__main">

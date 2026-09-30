@@ -42,13 +42,13 @@ const verified = user ? user.emailVerified : params.get("verified") === "1";
 
 {
   verified && !params.get("error") ? (
-    <AuthLayout title="Email confirmed">
+    <AuthLayout title="Email Confirmed">
       <Notice tone="ok"><p>Thanks. Your email is confirmed.</p></Notice>
       <p>You can now list a car, make offers and message sellers.</p>
       <a class="btn" href={next}>Continue</a>
     </AuthLayout>
   ) : (
-    <AuthLayout title={emailOn ? "Confirm your email" : "Email is not switched on yet"}>
+    <AuthLayout title={emailOn ? "Confirm Your Email" : "Email Is Not Switched On Yet"}>
       {formError && <Notice tone="error"><p>{formError}</p></Notice>}
       {resent && <Notice tone="ok"><p>A new link is on its way.</p></Notice>}
       {!emailOn ? (

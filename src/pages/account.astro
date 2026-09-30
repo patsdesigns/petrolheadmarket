@@ -115,10 +115,10 @@ const v = (key: string, fallback: string | null | undefined) => values[key] ?? f
 const notifyChecked = values.displayName !== undefined ? values.emailNotifications === "on" : profile.emailNotifications;
 ---
 
-<Base title="Account settings">
+<Base title="Account Settings">
   <div class="page-head">
     <div>
-      <h1 class="page-title">Account</h1>
+      <h1 class="page-title">Account Settings</h1>
       <p class="lede">Signed in as {user.email}</p>
     </div>
   </div>
@@ -196,7 +196,7 @@ const notifyChecked = values.displayName !== undefined ? values.emailNotificatio
       {
         !emailOn && !user.emailVerified && (
           <details class="owner" open={saved === "owner-reset"}>
-            <summary>Site owner</summary>
+            <summary>Site Owner</summary>
             {saved === "owner-reset" ? (
               <p>If this is an owner account, a reset link was written to the site log. It works for one hour.</p>
             ) : (

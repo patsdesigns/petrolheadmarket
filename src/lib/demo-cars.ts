@@ -91,7 +91,7 @@ const BY_BODY: Record<Body, number[]> = {
 function describe(c: DemoCar, i: number): string {
   const years = 2 + (i % 9);
   return [
-    `This ${c.year} ${c.make} ${c.model} is finished in ${c.ext} over ${c.int.toLowerCase()}. ${c.story} I have owned it for ${years} years and drive it most weekends. It starts on the first turn, idles smoothly and pulls cleanly through every gear.`,
+    `This ${c.year} ${c.make} ${c.model} is finished in ${c.ext} over ${c.int.charAt(0).toLowerCase()}${c.int.slice(1)}${c.int.endsWith("Recaro") ? " seats" : ""}. ${c.story} I have owned it for ${years} years and drive it most weekends. It starts on the first turn, idles smoothly and pulls cleanly through every gear.`,
     `It has always been stored indoors. There are small stone chips on the front bumper and hood that match the miles, and the driver's seat shows light wear on the outer bolster. Everything works, including the air conditioning, the windows and every gauge.`,
     `This is a demo listing for trying out the site. It is not a real car for sale.`,
   ].join("\n\n");

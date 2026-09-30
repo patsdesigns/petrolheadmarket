@@ -40,7 +40,7 @@ export const passwordField = z
 /**
  * Only allow redirects to a page on this site, never to another site.
  * Old "/app/..." links (from before the move off Webflow) lose the prefix.
- * Anything else falls back to My garage.
+ * Anything else falls back to My Garage.
  */
 export function safeNext(next: string | null | undefined): string {
   if (!next) return url(GARAGE);

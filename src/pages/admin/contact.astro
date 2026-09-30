@@ -5,7 +5,7 @@ import Notice from "../../components/Notice.astro";
 import { url } from "../../lib/paths";
 import { CONTACT_TOPICS, handledContactRequests, markContactHandled, openContactRequests } from "../../lib/contact";
 
-// Messages from the Contact the team form. Replies go from the admin's own
+// Messages from the Contact the Team form. Replies go from the admin's own
 // inbox (the Reply by email link), so this works with email off.
 const admin = Astro.locals.user!;
 if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
@@ -25,11 +25,11 @@ const replyHref = (email: string, topic: keyof typeof CONTACT_TOPICS) =>
   `mailto:${email}?subject=${encodeURIComponent(`Re: ${CONTACT_TOPICS[topic]}`)}`;
 ---
 
-<Base title="Messages to the team">
+<Base title="Messages to the Team">
   <AdminNav current="contact" />
-  <h1 class="page-title">Messages to the team</h1>
+  <h1 class="page-title">Messages to the Team</h1>
   <p class="lede">
-    Sent from the Contact the team form. Reply from your own inbox with Reply by email, then mark the message as handled.
+    Sent from the Contact the Team form. Reply from your own inbox with Reply by email, then mark the message as handled.
   </p>
   {Astro.url.searchParams.get("done") && <Notice tone="ok"><p>Marked as handled.</p></Notice>}
   {
@@ -61,7 +61,7 @@ const replyHref = (email: string, topic: keyof typeof CONTACT_TOPICS) =>
   {
     handled.length > 0 && (
       <details class="handled">
-        <summary>Recently handled ({handled.length})</summary>
+        <summary>Recently Handled ({handled.length})</summary>
         <ul class="msgs">
           {handled.map((m) => (
             <li class="card">

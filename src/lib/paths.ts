@@ -28,7 +28,7 @@ export function carUrl(slug: string): string {
 /** Public pages (the Lot). Same as url() now that everything is one site. */
 export const siteUrl = url;
 
-/** My garage, the signed-in dashboard. */
+/** My Garage, the signed-in dashboard. */
 export const GARAGE = "/garage";
 
 export const basePath = BASE;

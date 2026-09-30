@@ -21,8 +21,8 @@ const notice = Astro.url.searchParams.get("notice");
 const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" || l.status === "changes_requested");
 ---
 
-<Base title="Sell your car">
-  <h1 class="page-title">Sell your car</h1>
+<Base title="Sell Your Car">
+  <h1 class="page-title">Sell Your Car</h1>
   <p class="lede">
     Listing is free. A real person reviews every car before it goes live, so buyers know they are looking at an honest
     listing. It takes about 20 minutes, and your progress saves as you go.
@@ -38,7 +38,7 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
   {
     drafts.length > 0 && (
       <section class="card drafts" aria-labelledby="drafts-h">
-        <h2 id="drafts-h">Pick up where you left off</h2>
+        <h2 id="drafts-h">Pick Up Where You Left Off</h2>
         <ul>
           {drafts.map((d) => (
             <li class="spec-row">
@@ -63,7 +63,7 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
 
   <div class="sell-grid">
     <section class="card" aria-labelledby="need-h">
-      <h2 id="need-h">What you will need</h2>
+      <h2 id="need-h">What You Will Need</h2>
       <ul class="needs">
         <li><strong>At least {MIN_PHOTOS} photos.</strong> Outside, inside, engine bay, underside and any flaws.</li>
         <li><strong>The VIN</strong> for cars from 1981 on.</li>
@@ -73,7 +73,7 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
       </ul>
     </section>
     <section class="card" aria-labelledby="how-h">
-      <h2 id="how-h">How it works</h2>
+      <h2 id="how-h">How It Works</h2>
       <ol class="how">
         <li>Describe the car and add photos.</li>
         <li>Set your price and choose how buyers reach you.</li>

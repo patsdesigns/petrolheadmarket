@@ -263,7 +263,7 @@ export const jobRuns = sqliteTable("job_runs", {
   ranAt: integer("ran_at").notNull(),
 });
 
-// Messages to the team from the Contact the team form (/contact). Works
+// Messages to the team from the Contact the Team form (/contact). Works
 // with email off: admins read them on /admin/contact and reply from
 // their own inbox. The user is kept when the sender was signed in.
 export const contactRequests = sqliteTable(

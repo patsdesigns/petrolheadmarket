@@ -14,7 +14,7 @@ if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
 let q = (Astro.url.searchParams.get("q") ?? "").trim().slice(0, 100);
 let result: (AdminResult & { link?: string; email?: string }) | null = null;
 // While email is off, members who forget their password ask the team (the
-// Contact the team form), and an admin sends them a reset link himself.
+// Contact the Team form), and an admin sends them a reset link himself.
 const emailOn = emailConfigured();
 
 if (Astro.request.method === "POST") {
@@ -101,7 +101,7 @@ const fmtDate = (d: Date | null) =>
                   {r.displayName && r.displayName !== r.name && <span class="sub">Shows as {r.displayName}</span>}
                   {adminAddress && !r.emailVerified && (
                     <span class="sub">
-                      Owner address, not confirmed. Not an admin. The owner takes it back with Site owner on the password
+                      Owner address, not confirmed. Not an admin. The owner takes it back with Site Owner on the password
                       reset page.
                     </span>
                   )}
