@@ -1,4 +1,5 @@
 ---
+import { SITE_NAME } from "../lib/brand";
 import "../styles/global.css";
 import Header from "../components/Header.astro";
 
@@ -14,7 +15,7 @@ interface Props {
 const { title, description = "Buy and sell enthusiast cars. Every listing reviewed by a person.", index = false, image = null } =
   Astro.props;
 const shareImage = image ? new URL(image, Astro.url).toString() : null;
-const fullTitle = title ? `${title} | Petrol Head Market` : "Petrol Head Market";
+const fullTitle = title ? `${title} | ${SITE_NAME}` : `${SITE_NAME}`;
 ---
 
 <!doctype html>
@@ -45,6 +46,6 @@ const fullTitle = title ? `${title} | Petrol Head Market` : "Petrol Head Market"
         <slot />
       </div>
     </main>
-    <footer class="site-foot">Petrol Head Market · Every listing vetted by a person · Enthusiast cars only</footer>
+    <footer class="site-foot">{SITE_NAME} · Every listing vetted by a person · Enthusiast cars only</footer>
   </body>
 </html>

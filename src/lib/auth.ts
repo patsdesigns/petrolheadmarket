@@ -1,3 +1,4 @@
+import { SITE_NAME } from "./brand";
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -45,7 +46,7 @@ export const SUSPENDED_MESSAGE = "This account is suspended. Contact our team if
 function createAuth() {
   const origin = publicOrigin();
   return betterAuth({
-    appName: "Petrol Head Market",
+    appName: `${SITE_NAME}`,
     baseURL: origin,
     basePath: url("/api/auth"),
     secret: env.BETTER_AUTH_SECRET,
@@ -71,7 +72,7 @@ function createAuth() {
           to: user.email,
           subject: "Reset your password",
           paragraphs: [
-            `Hi ${user.name}, someone asked to reset the password for your Petrol Head Market account.`,
+            `Hi ${user.name}, someone asked to reset the password for your ${SITE_NAME} account.`,
             "The link works for one hour. If you did not ask for this, you can ignore this email.",
           ],
           action: { label: "Choose a new password", url: link },
@@ -102,7 +103,7 @@ function createAuth() {
           to: user.email,
           subject: "Confirm your email",
           paragraphs: [
-            `Hi ${user.name}, confirm your email to list a car, make offers and message sellers on Petrol Head Market.`,
+            `Hi ${user.name}, confirm your email to list a car, make offers and message sellers on ${SITE_NAME}.`,
             "The link works for 24 hours. If you did not create this account, ignore this email and do not open the link.",
           ],
           action: { label: "Confirm my email", url: link },

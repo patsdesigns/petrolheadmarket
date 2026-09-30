@@ -1,3 +1,4 @@
+import { SITE_NAME } from "./brand";
 import { and, desc, eq, gt, lt, ne, or } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { listings, offers, profiles, user as users, type Listing, type Offer } from "../db/schema";
@@ -57,7 +58,7 @@ export function offerPhrase(o: { madeBy: string; amount: number }): string {
  */
 function noteLines(message: string | null, flagged: boolean): string[] {
   if (!message) return [];
-  if (flagged) return ["They added a note. Read it on Petrol Head Market."];
+  if (flagged) return [`They added a note. Read it on ${SITE_NAME}.`];
   return [`Their note: "${message}"`];
 }
 

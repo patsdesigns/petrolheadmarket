@@ -1,4 +1,5 @@
 ---
+import { SITE_NAME } from "../../../lib/brand";
 import { and, eq } from "drizzle-orm";
 import Base from "../../../layouts/Base.astro";
 import Notice from "../../../components/Notice.astro";
@@ -90,7 +91,7 @@ const explain: Record<string, string> = {
   submitted: `Our team is reviewing your listing. This usually takes less than a day. ${updatesLine}`,
   changes_requested: "Our reviewer asked for a few changes. Update the listing and submit it again.",
   approved: "Approved. Our team is putting it on the Lot now. Check My garage for updates.",
-  live: "Your listing is live on Petrol Head Market.",
+  live: `Your listing is live on ${SITE_NAME}.`,
   offer_accepted: "You accepted an offer. Mark it as sold when the deal is done.",
   sold: "Sold. Congratulations.",
   rejected: "This listing was not accepted. You can delete it.",

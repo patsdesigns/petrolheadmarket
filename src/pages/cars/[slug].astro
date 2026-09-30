@@ -1,4 +1,5 @@
 ---
+import { SITE_NAME } from "../../lib/brand";
 // A car's public page: every photo, the facts, the seller's story and the
 // buy box (Make an offer, Message the seller). Live, offer accepted and sold
 // cars have a page; sold ones show as sold with no buttons.
@@ -94,7 +95,7 @@ const jsonLd = {
 <Base
   title={`${title} for sale`}
   index={!isSold}
-  description={listing.headline ? `${listing.headline}. ${title} for sale on Petrol Head Market.` : `${title} for sale on Petrol Head Market.`}
+  description={listing.headline ? `${listing.headline}. ${title} for sale on ${SITE_NAME}.` : `${title} for sale on ${SITE_NAME}.`}
   image={photos[0]?.url ?? null}
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, "\\u003c")} />

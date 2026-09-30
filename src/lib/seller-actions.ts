@@ -1,3 +1,4 @@
+import { SITE_NAME } from "./brand";
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { listings, offers, profiles, user as users, type Listing } from "../db/schema";
@@ -92,7 +93,7 @@ export async function markSold(listing: Listing): Promise<ActionResult> {
     `The ${title} has sold`,
     (o) => [
       `The seller marked the ${title} as sold, so ${offerPhrase(o)} was closed.`,
-      "Thanks for using Petrol Head Market. There are more great cars on the site.",
+      `Thanks for using ${SITE_NAME}. There are more great cars on the site.`,
     ],
     { respectSetting: true },
   );

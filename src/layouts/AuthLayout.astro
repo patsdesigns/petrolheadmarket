@@ -1,4 +1,5 @@
 ---
+import { SITE_NAME } from "../lib/brand";
 import Base from "./Base.astro";
 
 interface Props {
@@ -11,7 +12,7 @@ const { title, lede } = Astro.props;
 <Base title={title}>
   <div class="auth">
     <aside class="auth__brand" aria-hidden="true">
-      <p class="label auth__kicker">Petrol Head Market</p>
+      <p class="label auth__kicker">{SITE_NAME}</p>
       <p class="auth__big">Enthusiast cars, sold by the people who drove them.</p>
       <ul class="auth__points">
         <li><span>01</span> Every listing is reviewed by a person before it goes live.</li>

@@ -1,4 +1,5 @@
 ---
+import { SITE_NAME } from "../lib/brand";
 import "../styles/global.css";
 import { url, siteUrl, GARAGE } from "../lib/paths";
 
@@ -14,11 +15,11 @@ interface Props {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>Something went wrong | Petrol Head Market</title>
+    <title>Something went wrong | {SITE_NAME}</title>
   </head>
   <body>
     <header class="bar">
-      <div class="container"><a href={siteUrl("/")}>Petrol Head Market</a></div>
+      <div class="container"><a href={siteUrl("/")}>{SITE_NAME}</a></div>
     </header>
     <main>
       <div class="container">

@@ -1,4 +1,5 @@
 ---
+import { SITE_INITIALS, SITE_NAME, SITE_TAGLINE } from "../lib/brand";
 // Light glass site header, shared by every page. The red promise strip was removed at the owner's request.
 import { url, siteUrl, GARAGE } from "../lib/paths";
 
@@ -18,10 +19,10 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
   <header class="mast">
     <div class="mast__inner">
       <a class="brand" href={siteUrl("/")}>
-        <span class="roundel" aria-hidden="true">PH</span>
+        <span class="roundel" aria-hidden="true">{SITE_INITIALS}</span>
         <span class="wordmark">
-          Petrol Head Market
-          <span class="wordmark__sub">Enthusiast car classifieds</span>
+          {SITE_NAME}
+          <span class="wordmark__sub">{SITE_TAGLINE}</span>
         </span>
       </a>
       <nav class="actions" aria-label="Account">

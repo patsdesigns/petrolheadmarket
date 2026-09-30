@@ -1,3 +1,4 @@
+import { SITE_NAME } from "./brand";
 import { and, eq, inArray } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from "../db/client";
@@ -55,8 +56,8 @@ export async function closeOffersOnTakeDown(listing: Listing, now = new Date()):
       subject: `The ${title} is no longer listed`,
       paragraphs: [
         o.status === "ended"
-          ? `The ${title} was taken off Petrol Head Market, so the ${formatPrice(o.amount)} deal is off.`
-          : `The ${title} was taken off Petrol Head Market, so ${offerPhrase(o)} was closed.`,
+          ? `The ${title} was taken off ${SITE_NAME}, so the ${formatPrice(o.amount)} deal is off.`
+          : `The ${title} was taken off ${SITE_NAME}, so ${offerPhrase(o)} was closed.`,
         "Never send money for a car you have not seen in person. There are more great cars on the site.",
       ],
     }).catch((err) => console.error("[take-down] buyer email failed", safeError(err)));
@@ -110,7 +111,7 @@ export async function takeDownListing(
         to: seller.email,
         subject: `Your ${title} was taken down`,
         paragraphs: [
-          `Hi ${seller.name}, our team took your ${title} off Petrol Head Market. Open offers on it were closed.`,
+          `Hi ${seller.name}, our team took your ${title} off ${SITE_NAME}. Open offers on it were closed.`,
           opts.note,
           questionsLine(listing.id),
         ],

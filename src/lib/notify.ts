@@ -1,3 +1,4 @@
+import { SITE_NAME } from "./brand";
 import { adminEmails, absoluteUrl } from "./config";
 import { questionsLine } from "./contact";
 import { sendEmail } from "./email";
@@ -31,7 +32,7 @@ export async function notifySellerLive(seller: Seller, listingId: string, title:
     to: seller.email,
     subject: `Your ${title} is live`,
     paragraphs: [
-      `Good news, ${seller.name}. Your ${title} passed review and is now live on Petrol Head Market.`,
+      `Good news, ${seller.name}. Your ${title} passed review and is now live on ${SITE_NAME}.`,
       // Only promise message and offer emails when the seller gets them.
       seller.notify === false
         ? "Buyers' messages and offers show up in your inbox and on the Offers page. You can change the price, offers and contact settings any time from My garage."
@@ -59,7 +60,7 @@ export async function notifySellerRejected(seller: Seller, listingId: string, ti
     to: seller.email,
     subject: `About your ${title} listing`,
     paragraphs: [
-      `Hi ${seller.name}, thanks for listing your ${title} with Petrol Head Market. We are not able to accept this listing.`,
+      `Hi ${seller.name}, thanks for listing your ${title} with ${SITE_NAME}. We are not able to accept this listing.`,
       notes,
       questionsLine(listingId),
     ],
