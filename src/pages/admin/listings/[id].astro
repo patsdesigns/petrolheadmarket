@@ -10,7 +10,7 @@ import Notice from "../../../components/Notice.astro";
 import StatusBadge from "../../../components/StatusBadge.astro";
 import { getDb } from "../../../db/client";
 import { listings, listingPhotos, profiles, user as users, type Listing } from "../../../db/schema";
-import { url, siteUrl } from "../../../lib/paths";
+import { url, carUrl } from "../../../lib/paths";
 import {
   BODY_STYLES,
   DRIVETRAINS,
@@ -249,7 +249,7 @@ const fmtDate = (d: Date | null | undefined) =>
   )}
 
   {params.get("published") && (
-    <Notice tone="ok"><p>Published. <a href={siteUrl(`/listings/${listing.slug}`)}>View it on the site</a>.{" "}
+    <Notice tone="ok"><p>Published. <a href={carUrl(listing.slug)}>View it on the site</a>.{" "}
       {emailConfigured() ? "The seller was emailed." : "Email is not set up, so the seller was not emailed."}</p></Notice>
   )}
   {params.get("queued") && (
@@ -473,7 +473,7 @@ const fmtDate = (d: Date | null | undefined) =>
           )
         }
         {listing.slug && IN_CMS.includes(listing.status) && (
-          <p><a href={siteUrl(`/listings/${listing.slug}`)}>View on the site</a></p>
+          <p><a href={carUrl(listing.slug)}>View on the site</a></p>
         )}
       </section>
 

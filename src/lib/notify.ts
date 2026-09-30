@@ -1,7 +1,7 @@
 import { adminEmails, absoluteUrl, publicOrigin } from "./config";
 import { questionsLine } from "./contact";
 import { sendEmail } from "./email";
-import { url } from "./paths";
+import { url, GARAGE } from "./paths";
 import { safeError } from "./log";
 
 /** Tell the review team a listing is waiting. Failures are logged, not thrown. */
@@ -64,6 +64,6 @@ export async function notifySellerRejected(seller: Seller, listingId: string, ti
       questionsLine(listingId),
     ],
     // Through sign in: a signed-out visit to /app goes to the Lot instead.
-    action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url("/"))}`) },
+    action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`) },
   }).catch((err) => console.error("[notify] rejected email failed", listingId, safeError(err)));
 }

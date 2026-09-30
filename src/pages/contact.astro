@@ -3,7 +3,7 @@ import { z } from "zod";
 import AuthLayout from "../layouts/AuthLayout.astro";
 import Field from "../components/Field.astro";
 import Notice from "../components/Notice.astro";
-import { url, siteUrl } from "../lib/paths";
+import { url, siteUrl, GARAGE } from "../lib/paths";
 import { emailField, parseForm } from "../lib/forms";
 import { CONTACT_TOPICS, createContactRequest, isContactTopic } from "../lib/contact";
 
@@ -71,7 +71,7 @@ const listingId = values.listing ?? listingParam ?? "";
         <Notice tone="ok">
           <p>Thanks. Your message reached our team. We will reply by email to {sentTo}.</p>
         </Notice>
-        <a class="btn btn--secondary" href={user ? url("/") : siteUrl("/")}>{user ? "Back to My garage" : "Back to the Lot"}</a>
+        <a class="btn btn--secondary" href={user ? url(GARAGE) : siteUrl("/")}>{user ? "Back to My garage" : "Back to the Lot"}</a>
       </>
     ) : (
       <>

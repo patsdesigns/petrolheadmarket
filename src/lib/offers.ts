@@ -6,7 +6,7 @@ import { syncListing } from "./cms";
 import { absoluteUrl } from "./config";
 import { sendEmail } from "./email";
 import { formatPrice, listingTitle } from "./listing-rules";
-import { url } from "./paths";
+import { url, GARAGE } from "./paths";
 import { isSuspended } from "./profile";
 import { scamCheck } from "./messaging";
 import { safeError } from "./log";
@@ -323,7 +323,7 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
         "When the sale is done, mark the car as sold in My garage. If the deal falls through, you can relist it.",
       ],
       // Through sign in: a signed-out visit to /app goes to the Lot instead.
-      action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url("/"))}`) },
+      action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`) },
     }).catch((e) => console.error("[offers] accept email failed", safeError(e))),
   ]);
 

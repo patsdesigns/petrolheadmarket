@@ -3,7 +3,7 @@ import { z } from "zod";
 import Base from "../layouts/Base.astro";
 import Notice from "../components/Notice.astro";
 import StatusBadge from "../components/StatusBadge.astro";
-import { url, siteUrl } from "../lib/paths";
+import { url, carUrl } from "../lib/paths";
 import { formatPrice, listingTitle } from "../lib/listing-rules";
 import {
   acceptOffer,
@@ -178,7 +178,7 @@ const waitingOnMe = (t: OfferThread) =>
                   {t.listing.deletedAt ? (
                     <span class="offer__car">{listingTitle(t.listing)}</span>
                   ) : (
-                    <a class="offer__car" href={t.listing.slug && ["live", "offer_accepted", "sold"].includes(t.listing.status) ? siteUrl(`/listings/${t.listing.slug}`) : t.role === "seller" ? url(`/listings/${t.listing.id}`) : undefined}>
+                    <a class="offer__car" href={t.listing.slug && ["live", "offer_accepted", "sold"].includes(t.listing.status) ? carUrl(t.listing.slug) : t.role === "seller" ? url(`/listings/${t.listing.id}`) : undefined}>
                       {listingTitle(t.listing)}
                     </a>
                   )}

@@ -1,6 +1,6 @@
 ---
 import "../styles/global.css";
-import { url, siteUrl } from "../lib/paths";
+import { url, siteUrl, GARAGE } from "../lib/paths";
 
 // Rendered when something breaks. Kept free of database calls so it can't fail too.
 interface Props {
@@ -29,7 +29,7 @@ interface Props {
         </p>
         <p style="display:flex;gap:12px;flex-wrap:wrap">
           {/* Sign in forwards signed-in people straight to My garage. */}
-          <a class="btn" href={`${url("/login")}?next=${encodeURIComponent(url("/"))}`}>Go to my garage</a>
+          <a class="btn" href={`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`}>Go to my garage</a>
           <a class="btn btn--secondary" href={siteUrl("/")}>Browse cars</a>
         </p>
       </div>

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { basePath, url } from "./paths";
+import { url, GARAGE } from "./paths";
 
 /** Read a POSTed form and validate it. Field errors are keyed by field name. */
 export async function parseForm<S extends z.ZodType>(
@@ -38,13 +38,16 @@ export const passwordField = z
   .max(128, "Use 128 characters or fewer.");
 
 /**
- * Only allow redirects back into the app, never to another site.
- * Accepts "/app/..." paths; anything else falls back to My garage.
+ * Only allow redirects to a page on this site, never to another site.
+ * Old "/app/..." links (from before the move off Webflow) lose the prefix.
+ * Anything else falls back to My garage.
  */
 export function safeNext(next: string | null | undefined): string {
-  if (!next) return url("/");
-  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return url("/");
-  if (next !== basePath && !next.startsWith(`${basePath}/`) && !next.startsWith(`${basePath}?`))
-    return url("/");
+  if (!next) return url(GARAGE);
+  if (!next.startsWith("/") || next.startsWith("//") || next.includes("\\")) return url(GARAGE);
+  if (next === "/app" || next.startsWith("/app/") || next.startsWith("/app?")) {
+    const rest = next.slice(4);
+    return !rest || rest.startsWith("?") ? `${url(GARAGE)}${rest}` : rest;
+  }
   return next;
 }

@@ -3,7 +3,7 @@
 // messages: a sample listing on the Lot (not in the app), a car that has left
 // the Lot, or no listing given at all. Signed-in and signed-out visitors
 // alike, so nobody is asked to sign up for a dead end.
-import { siteUrl } from "../lib/paths";
+import { siteUrl, carUrl } from "../lib/paths";
 
 interface Props {
   reason: "sample" | "gone" | "missing";
@@ -32,7 +32,7 @@ const text =
   <p class="lede">{text}</p>
   <p class="not-open__actions">
     <a class="btn" href={siteUrl("/")}>Back to the Lot</a>
-    {slug && reason === "sample" && <a class="btn btn--secondary" href={siteUrl(`/listings/${slug}`)}>Back to the car</a>}
+    {slug && reason === "sample" && <a class="btn btn--secondary" href={carUrl(slug)}>Back to the car</a>}
   </p>
 </div>
 

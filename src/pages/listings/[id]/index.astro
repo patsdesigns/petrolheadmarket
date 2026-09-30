@@ -4,7 +4,7 @@ import Base from "../../../layouts/Base.astro";
 import Notice from "../../../components/Notice.astro";
 import { getDb } from "../../../db/client";
 import { listings } from "../../../db/schema";
-import { url, siteUrl } from "../../../lib/paths";
+import { url, carUrl, GARAGE } from "../../../lib/paths";
 import { BODY_STYLES, DRIVETRAINS, TITLE_STATUSES, TRANSMISSIONS, STATUS_LABELS, optionLabel } from "../../../lib/listing-options";
 import { formatMiles, formatPrice, listingTitle, titleText } from "../../../lib/listing-rules";
 import { getOwnListing, getPhotos, isEditable, photoView } from "../../../lib/listings";
@@ -79,7 +79,7 @@ const editUrl = url(`/listings/${id}/edit`);
 // Only while it is on the site (approved listings already have a slug saved).
 const publicUrl =
   listing.slug && listing.cmsItemId && ["live", "offer_accepted", "sold"].includes(listing.status)
-    ? siteUrl(`/listings/${listing.slug}`)
+    ? carUrl(listing.slug)
     : null;
 
 const emailOn = emailConfigured();
@@ -118,7 +118,7 @@ const deleteConfirm =
 ---
 
 <Base title={title}>
-  <a class="back" href={url("/")}>← My garage</a>
+  <a class="back" href={url(GARAGE)}>← My garage</a>
   <p class="eyebrow">
     <span>{STATUS_LABELS[listing.status]}</span>
     {location && <span>{location}</span>}

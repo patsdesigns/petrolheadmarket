@@ -1,7 +1,7 @@
 ---
 // Light glass site header, matched to the "Site Header" component on the
 // Webflow site. The red promise strip was removed at the owner's request.
-import { url, siteUrl } from "../lib/paths";
+import { url, siteUrl, GARAGE } from "../lib/paths";
 
 interface Props {
   user?: { displayName: string; isAdmin: boolean } | null;
@@ -12,7 +12,7 @@ interface Props {
 
 const { user = null, unread = 0, adminTodo = 0 } = Astro.props;
 const path = Astro.url.pathname;
-const here = (p: string) => (p === url("/") ? path === p : path.startsWith(p));
+const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p));
 ---
 
 <div class="top">
@@ -29,7 +29,7 @@ const here = (p: string) => (p === url("/") ? path === p : path.startsWith(p));
         {
           user ? (
             <>
-              <a class="ghost" href={url("/")} aria-current={here(url("/")) ? "page" : undefined}>My garage</a>
+              <a class="ghost" href={url(GARAGE)} aria-current={here(url(GARAGE)) ? "page" : undefined}>My garage</a>
               <a class="ghost" href={url("/inbox")} aria-current={here(url("/inbox")) ? "page" : undefined}>
                 Inbox
                 {unread > 0 && (

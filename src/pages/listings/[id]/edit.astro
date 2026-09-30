@@ -11,7 +11,7 @@ import PhotoUploader from "../../../components/PhotoUploader.tsx";
 import "../../../styles/uploader.css";
 import { getDb } from "../../../db/client";
 import { listings } from "../../../db/schema";
-import { url } from "../../../lib/paths";
+import { url, GARAGE } from "../../../lib/paths";
 import { canTransact, emailConfigured } from "../../../lib/config";
 import {
   BODY_STYLES,
@@ -139,7 +139,7 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
 ---
 
 <Base title={`${step.title} | ${title}`}>
-  <a class="back" href={url("/")}>← My garage</a>
+  <a class="back" href={url(GARAGE)}>← My garage</a>
   <p class="eyebrow"><span>{title}</span><span>{listing.status === "changes_requested" ? "Changes requested" : "Draft"}</span></p>
   <h1 class="page-title">{isChanges ? "Update your listing" : "Sell your car"}</h1>
 
