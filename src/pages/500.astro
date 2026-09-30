@@ -1,6 +1,7 @@
 ---
+import { SITE_NAME } from "../lib/brand";
 import "../styles/global.css";
-import { url, siteUrl } from "../lib/paths";
+import { url, siteUrl, GARAGE } from "../lib/paths";
 
 // Rendered when something breaks. Kept free of database calls so it can't fail too.
 interface Props {
@@ -14,11 +15,11 @@ interface Props {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="robots" content="noindex" />
-    <title>Something went wrong | Petrol Head Market</title>
+    <title>Something went wrong | {SITE_NAME}</title>
   </head>
   <body>
     <header class="bar">
-      <div class="container"><a href={siteUrl("/")}>Petrol Head Market</a></div>
+      <div class="container"><a href={siteUrl("/")}>{SITE_NAME}</a></div>
     </header>
     <main>
       <div class="container">
@@ -29,7 +30,7 @@ interface Props {
         </p>
         <p style="display:flex;gap:12px;flex-wrap:wrap">
           {/* Sign in forwards signed-in people straight to My garage. */}
-          <a class="btn" href={`${url("/login")}?next=${encodeURIComponent(url("/"))}`}>Go to my garage</a>
+          <a class="btn" href={`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`}>Go to my garage</a>
           <a class="btn btn--secondary" href={siteUrl("/")}>Browse cars</a>
         </p>
       </div>

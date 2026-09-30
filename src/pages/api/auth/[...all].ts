@@ -2,9 +2,9 @@ import type { APIRoute } from "astro";
 import { getAuth } from "../../../lib/auth";
 import { url } from "../../../lib/paths";
 
-// Better Auth's HTTP API, mounted at /app/api/auth/*. Only the GET links a
+// Better Auth's HTTP API, mounted at /api/auth/*. Only the GET links a
 // browser opens are public: the confirm email link, the reset password link
-// (which forwards to /app/reset-password) and get-session. Everything else
+// (which forwards to /reset-password) and get-session. Everything else
 // (sign in, sign up, resets, changes) goes through our own form handlers via
 // callAuth(), which calls auth.handler in process, never this route.
 function allowed(request: Request): boolean {

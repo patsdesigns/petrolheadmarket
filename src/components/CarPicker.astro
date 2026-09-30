@@ -98,9 +98,10 @@ const fields = [
   const FIRST = 1920;
   const root = document.querySelector<HTMLElement>("[data-car-picker]");
   const catalog = JSON.parse(document.getElementById("car-catalog")?.textContent || "{}") as Record<string, [string, Range[]][]>;
-  const year = root?.querySelector<HTMLSelectElement>("#f-year");
-  const make = root?.querySelector<HTMLSelectElement>("#f-make");
-  const model = root?.querySelector<HTMLSelectElement>("#f-model");
+  const pickSelect = (id: string) => document.getElementById(id) as HTMLSelectElement | null;
+  const year = pickSelect("f-year");
+  const make = pickSelect("f-make");
+  const model = pickSelect("f-model");
 
   /** The chosen year when it is one of the listed years, else no filter. */
   function chosenYear(): number | null {
@@ -139,8 +140,8 @@ const fields = [
   make?.addEventListener("change", refillModels);
 
   // Picking Other moves the cursor into its text box.
-  root?.querySelectorAll<HTMLSelectElement>("select").forEach((sel) =>
-    sel.addEventListener("change", (e) => {
+  [year, make, model].forEach((sel) =>
+    sel?.addEventListener("change", (e: Event) => {
       if (sel.value === OTHER && e.isTrusted) document.getElementById(`${sel.id}_other`)?.focus();
     }),
   );

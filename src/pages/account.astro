@@ -1,13 +1,12 @@
 ---
 import { z } from "zod";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import Base from "../layouts/Base.astro";
 import Field from "../components/Field.astro";
 import Notice from "../components/Notice.astro";
 import { getDb } from "../db/client";
-import { listings, profiles } from "../db/schema";
+import { profiles } from "../db/schema";
 import { displayNameField } from "../lib/profile";
-import { syncListing } from "../lib/cms";
 import { url } from "../lib/paths";
 import { emailField, parseForm, passwordField } from "../lib/forms";
 import { callAuth, friendlyAuthError, redirectWithCookies } from "../lib/auth-call";
@@ -23,7 +22,7 @@ const errors: Record<Section, Record<string, string>> = { profile: {}, email: {}
 const formErrors: Partial<Record<Section, string>> = {};
 let values: Record<string, string> = {};
 
-const saved = Astro.url.searchParams.get("saved") as Section | "email-sent" | "profile-pending" | "owner-reset" | null;
+const saved = Astro.url.searchParams.get("saved") as Section | "email-sent" | "owner-reset" | null;
 
 const phoneField = z
   .string()
@@ -58,23 +57,8 @@ if (Astro.request.method === "POST") {
           emailNotifications: parsed.data.emailNotifications === "on",
         })
         .where(eq(profiles.userId, user.id));
-      // The name is on the public listing, so push it to the site now.
-      let synced = true;
-      if (parsed.data.displayName !== profile.displayName) {
-        const published = await getDb()
-          .select({ id: listings.id })
-          .from(listings)
-          .where(and(eq(listings.userId, user.id), inArray(listings.status, ["live", "offer_accepted", "sold"]), isNotNull(listings.cmsItemId)))
-          .limit(20)
-          .all();
-        // One at a time to stay inside Webflow's rate limit. A failed sync
-        // is logged on the listing and does not undo the save.
-        for (const l of published) {
-          const r = await syncListing(l.id, user.id).catch(() => ({ ok: false }));
-          if (!r.ok) synced = false;
-        }
-      }
-      return Astro.redirect(`${url("/account")}?saved=${synced ? "profile" : "profile-pending"}`, 303);
+      // Car pages read the name when they load, so the Lot shows it at once.
+      return Astro.redirect(`${url("/account")}?saved=profile`, 303);
     }
   } else if (intent === "email" && emailOn) {
     const parsed = await parseForm(Astro.request, z.object({ newEmail: emailField }));
@@ -155,9 +139,6 @@ const notifyChecked = values.displayName !== undefined ? values.emailNotificatio
     <section class="card" aria-labelledby="profile-h">
       <h2 id="profile-h">Profile</h2>
       {saved === "profile" && <Notice tone="ok"><p>Profile saved.</p></Notice>}
-      {saved === "profile-pending" && (
-        <Notice tone="ok"><p>Profile saved. Your public listings will show the new name once the site updates.</p></Notice>
-      )}
       <form method="post" novalidate>
         <input type="hidden" name="intent" value="profile" />
         <Field name="displayName" label="Display name" autocomplete="nickname" value={v("displayName", profile.displayName)}

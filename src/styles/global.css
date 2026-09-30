@@ -1,4 +1,4 @@
-/* Design tokens: the glass design shared with the public Webflow site
+/* Design tokens: the glass design used across the whole site
    (see CLAUDE.md, Design). */
 :root {
   --ink: #15171b;
@@ -146,7 +146,7 @@ a {
 }
 
 /* Layout */
-/* Same frame as the Webflow site: 1180px content, 20px gutters. */
+/* The site frame: 1180px content, 20px gutters. */
 .container {
   width: 100%;
   max-width: calc(var(--max) + 2 * var(--gutter));
@@ -734,4 +734,39 @@ a.stat.is-alert:hover {
   text-align: center;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+/* Text for screen readers only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Removable filter or search chips */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 0 10px 0 12px;
+  border: 1px solid var(--glass-border);
+  border-radius: 999px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 2px 8px rgba(21, 23, 27, 0.05);
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.pill span {
+  color: var(--muted);
+}
+.pill:hover {
+  background: rgba(255, 255, 255, 0.92);
 }

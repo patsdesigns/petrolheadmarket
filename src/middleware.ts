@@ -3,14 +3,15 @@ import type { APIContext, MiddlewareNext } from "astro";
 import { getAuth } from "./lib/auth";
 import { ensureProfile } from "./lib/profile";
 import { publicOrigin } from "./lib/config";
-import { basePath, siteUrl, url } from "./lib/paths";
+import { url } from "./lib/paths";
 import { safeNext } from "./lib/forms";
 import { unreadCount } from "./lib/messaging";
 import { adminCounts, NO_ADMIN_COUNTS } from "./lib/admin-counts";
 import { safeError } from "./lib/log";
 
-// Paths (relative to /app) anyone can open without signing in.
+// Paths anyone can open without signing in. The Lot ("/") is public too.
 const PUBLIC_PREFIXES = [
+  "/cars/",
   "/login",
   "/signup",
   "/forgot-password",
@@ -22,17 +23,13 @@ const PUBLIC_PREFIXES = [
   "/suspended",
   "/contact",
 ];
-// Pages that look the listing up before asking anyone to sign in (a sample
-// listing on the Lot gets a friendly page, not a sign-up form). Only GET and
-// HEAD pass; the page itself sends signed-out visitors of a real listing to login.
+// Pages that look the listing up before asking anyone to sign in (a car that
+// is no longer on the Lot gets a friendly page, not a sign-up form). Only GET
+// and HEAD pass; the page itself sends signed-out visitors of a real listing to login.
 const PAGE_CHECKS_AUTH = ["/offer", "/message"];
 // Signed-in people are sent on from these.
 const GUEST_ONLY = ["/login", "/signup", "/forgot-password"];
 
-function appPath(pathname: string): string {
-  const rest = pathname.startsWith(basePath) ? pathname.slice(basePath.length) : pathname;
-  return rest === "" ? "/" : rest;
-}
 
 function matches(path: string, prefixes: string[]): boolean {
   return prefixes.some((p) => (p.endsWith("/") ? path.startsWith(p) : path === p || path.startsWith(`${p}/`)));
@@ -60,15 +57,6 @@ function sameOrigin(request: Request): boolean {
 
 let loggedHeaderNames = false;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-/** GET /api/listings/{slug}/photos: the public gallery JSON (a UUID there is the seller's uploader). */
-function isPublicGallery(path: string, method: string): boolean {
-  if (method !== "GET" && method !== "HEAD") return false;
-  const m = /^\/api\/listings\/([^/]+)\/photos\/?$/.exec(path);
-  return !!m && !UUID.test(m[1]);
-}
-
 /**
  * Read any request body the route left unread (an early error, a redirect).
  * An unread upload left on a kept-alive connection breaks the next request
@@ -87,12 +75,19 @@ export const onRequest = defineMiddleware(async (context, next) => {
 const handle = async (context: APIContext, next: MiddlewareNext): Promise<Response> => {
   const { request } = context;
   // Once per worker: record which header names arrive (names only, never
-  // values) so we can see which one carries the visitor IP on Webflow Cloud.
+  // values) so we can confirm which one carries the visitor IP.
   if (!loggedHeaderNames) {
     loggedHeaderNames = true;
     console.log("[headers] names:", [...request.headers.keys()].sort().join(", "));
   }
-  const path = appPath(context.url.pathname);
+  const path = context.url.pathname || "/";
+
+  // Links from before the move off Webflow pointed into /app. Send them on.
+  if (path === "/app" || path.startsWith("/app/")) {
+    const rest = path === "/app" ? "/garage" : path.slice(4);
+    return context.redirect(`${rest}${context.url.search}`, 301);
+  }
+
   const isMutation = !["GET", "HEAD", "OPTIONS"].includes(request.method);
 
   if (isMutation && !path.startsWith("/api/auth/") && !sameOrigin(request)) {
@@ -129,14 +124,9 @@ const handle = async (context: APIContext, next: MiddlewareNext): Promise<Respon
     return out;
   };
 
-  // Better Auth's own routes, public photos and the public gallery JSON don't
-  // need the session lookup (so they stay cacheable and cost no D1 reads).
-  if (
-    !path.startsWith("/api/auth/") &&
-    !path.startsWith("/photos/") &&
-    path !== "/api/health" &&
-    !isPublicGallery(path, request.method)
-  ) {
+  // Better Auth's own routes and public photos don't need the session
+  // lookup (so they stay cacheable and cost no D1 reads).
+  if (!path.startsWith("/api/auth/") && !path.startsWith("/photos/") && path !== "/api/health") {
     // If auth can't start (for example BETTER_AUTH_SECRET is not set yet),
     // treat the visitor as signed out rather than failing every page.
     const result = await (async () =>
@@ -169,7 +159,7 @@ const handle = async (context: APIContext, next: MiddlewareNext): Promise<Respon
   }
 
   // A suspended person only sees the notice (and can sign out).
-  if (context.locals.suspended && path !== "/logout" && !matches(path, PUBLIC_PREFIXES)) {
+  if (context.locals.suspended && path !== "/logout" && path !== "/" && !matches(path, PUBLIC_PREFIXES)) {
     if (isMutation && request.headers.get("x-autosave") === "1") {
       return withAuthCookies(
         new Response(JSON.stringify({ ok: false, reason: "suspended" }), {
@@ -184,15 +174,9 @@ const handle = async (context: APIContext, next: MiddlewareNext): Promise<Respon
 
   const signedIn = context.locals.user !== null;
 
-  // Signed-out visitors to the app's front door go to the Lot (the public
-  // home page), not a sign-in form. Deeper links still go to sign in.
-  if (!signedIn && path === "/" && request.method === "GET") {
-    return withAuthCookies(context.redirect(siteUrl("/"), 303));
-  }
-
   const suspendedSignOut = context.locals.suspended && path === "/logout";
   const pageChecksAuth = PAGE_CHECKS_AUTH.includes(path) && (request.method === "GET" || request.method === "HEAD");
-  if (!signedIn && !matches(path, PUBLIC_PREFIXES) && !suspendedSignOut && !pageChecksAuth) {
+  if (!signedIn && path !== "/" && !matches(path, PUBLIC_PREFIXES) && !suspendedSignOut && !pageChecksAuth) {
     // The wizard's autosave is a fetch: a redirect to the login page would
     // look like a successful save, so tell it plainly instead.
     if (isMutation && request.headers.get("x-autosave") === "1") {

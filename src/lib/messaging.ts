@@ -1,3 +1,4 @@
+import { SITE_NAME } from "./brand";
 import { and, count, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { listings, messages, offers, profiles, threads, user as users, type Listing, type Thread } from "../db/schema";
@@ -209,12 +210,12 @@ export async function sendMessage(opts: {
       // A flagged message is never quoted, so a scam pitch doesn't land in
       // an inbox before an admin has seen it (the same as offer notes).
       const lines = flagReason
-        ? [`${name} sent you a message. Read it on Petrol Head Market.`]
+        ? [`${name} sent you a message. Read it on ${SITE_NAME}.`]
         : [`${name} wrote:`, `"${preview}"`];
       await sendEmail({
         to: recipient.email,
         subject: `New message about the ${listingTitle(listing)}`,
-        paragraphs: [...lines, "Reply on Petrol Head Market. Your email address stays private."],
+        paragraphs: [...lines, `Reply on ${SITE_NAME}. Your email address stays private.`],
         action: { label: "Read and reply", url: absoluteUrl(url(`/inbox/${thread.id}`)) },
       }).catch((err) => console.error("[messages] email failed", safeError(err)));
     }

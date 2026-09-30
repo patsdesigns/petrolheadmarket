@@ -2,7 +2,6 @@ import { and, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizz
 import { chunks, getDb } from "../db/client";
 import { listings, messages, offers, profiles, session, user as users } from "../db/schema";
 import { audit } from "./audit";
-import { unpublishListing } from "./cms";
 import { closeOffersOnTakeDown } from "./take-down";
 import { isAdminEmail, publicOrigin } from "./config";
 import { getAuth, RESET_CAPTURE_HEADER, resetCaptures } from "./auth";
@@ -11,7 +10,7 @@ import { roleFor } from "./profile";
 
 /** Listings that are on the site or on their way there. Suspending takes them down. */
 const TAKE_DOWN_STATUSES = ["submitted", "approved", "live", "offer_accepted"] as const;
-const IN_CMS = ["live", "offer_accepted"];
+const ON_THE_LOT = ["live", "offer_accepted"];
 const SUSPENDED_NOTE = "Taken down because the account was suspended.";
 
 export interface AdminUserRow {
@@ -77,7 +76,7 @@ export async function searchUsers(q: string, limit = 50): Promise<AdminUserRow[]
     return {
       ...r,
       listingsTotal: mine.reduce((sum, c) => sum + c.n, 0),
-      listingsLive: mine.filter((c) => IN_CMS.includes(c.status)).reduce((sum, c) => sum + c.n, 0),
+      listingsLive: mine.filter((c) => ON_THE_LOT.includes(c.status)).reduce((sum, c) => sum + c.n, 0),
     };
   });
 }
@@ -135,13 +134,8 @@ export async function suspendUser(adminId: string, userId: string): Promise<Admi
     .where(and(eq(listings.userId, userId), inArray(listings.status, [...TAKE_DOWN_STATUSES])))
     .returning()
     .all();
-  let unpublishFailed = 0;
   for (const l of down) {
     await audit(adminId, "take_down", "listing", l.id, { reason: "seller_suspended", from: l.status });
-    if (l.cmsItemId) {
-      const r = await unpublishListing(l.id, adminId);
-      if (!r.ok) unpublishFailed++;
-    }
     // Close offers the same way a take down does: pending offers are
     // declined and an accepted deal ends, with an email to each buyer.
     await closeOffersOnTakeDown(l, now);
@@ -186,7 +180,6 @@ export async function suspendUser(adminId: string, userId: string): Promise<Admi
 
   const parts = ["Account suspended and signed out."];
   if (down.length) parts.push(`${down.length} listing${down.length === 1 ? " was" : "s were"} taken down.`);
-  if (unpublishFailed) parts.push("Removing it from the site failed for some, see each listing's history.");
   return { ok: true, message: parts.join(" ") };
 }
 

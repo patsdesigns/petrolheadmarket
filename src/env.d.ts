@@ -1,13 +1,11 @@
 /// <reference types="astro/client" />
 
 // Bindings come from wrangler.json (see worker-configuration.d.ts, generated
-// by `npm run cf-typegen`). Variables and secrets are set in the Webflow Cloud
-// dashboard, so they are declared here by hand.
+// by `npm run cf-typegen`). Variables and secrets are set in the Cloudflare
+// dashboard (Workers, Settings, Variables and Secrets), so they are declared
+// here by hand.
 declare namespace Cloudflare {
   interface Env {
-    WEBFLOW_API_TOKEN?: string;
-    WEBFLOW_SITE_ID?: string;
-    WEBFLOW_COLLECTION_ID?: string;
     BETTER_AUTH_SECRET?: string;
     RESEND_API_KEY?: string;
     EMAIL_FROM?: string;
@@ -17,8 +15,7 @@ declare namespace Cloudflare {
     /** Sign ups allowed per hour for the whole site (default 30). */
     SIGNUP_HOURLY_MAX?: string;
     PUBLIC_SITE_URL?: string;
-    /** Local tests only: point the Webflow and Resend clients at fake APIs. */
-    WEBFLOW_API_BASE?: string;
+    /** Local tests only: point the Resend client at a fake API. */
     RESEND_API_BASE?: string;
   }
 }

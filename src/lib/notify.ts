@@ -1,7 +1,8 @@
-import { adminEmails, absoluteUrl, publicOrigin } from "./config";
+import { SITE_NAME } from "./brand";
+import { adminEmails, absoluteUrl } from "./config";
 import { questionsLine } from "./contact";
 import { sendEmail } from "./email";
-import { url } from "./paths";
+import { url, carUrl, GARAGE } from "./paths";
 import { safeError } from "./log";
 
 /** Tell the review team a listing is waiting. Failures are logged, not thrown. */
@@ -31,13 +32,13 @@ export async function notifySellerLive(seller: Seller, listingId: string, title:
     to: seller.email,
     subject: `Your ${title} is live`,
     paragraphs: [
-      `Good news, ${seller.name}. Your ${title} passed review and is now live on Petrol Head Market.`,
+      `Good news, ${seller.name}. Your ${title} passed review and is now live on ${SITE_NAME}.`,
       // Only promise message and offer emails when the seller gets them.
       seller.notify === false
         ? "Buyers' messages and offers show up in your inbox and on the Offers page. You can change the price, offers and contact settings any time from My garage."
         : "We will email you when a buyer sends a message or an offer. You can change the price, offers and contact settings any time from My garage.",
     ],
-    action: { label: "See your listing", url: `${publicOrigin()}/listings/${slug}` },
+    action: { label: "See your listing", url: absoluteUrl(carUrl(slug)) },
   }).catch((err) => console.error("[notify] live email failed", listingId, safeError(err)));
 }
 
@@ -59,11 +60,11 @@ export async function notifySellerRejected(seller: Seller, listingId: string, ti
     to: seller.email,
     subject: `About your ${title} listing`,
     paragraphs: [
-      `Hi ${seller.name}, thanks for listing your ${title} with Petrol Head Market. We are not able to accept this listing.`,
+      `Hi ${seller.name}, thanks for listing your ${title} with ${SITE_NAME}. We are not able to accept this listing.`,
       notes,
       questionsLine(listingId),
     ],
-    // Through sign in: a signed-out visit to /app goes to the Lot instead.
-    action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url("/"))}`) },
+    // Through sign in, so a signed-out seller lands on the page after signing in.
+    action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`) },
   }).catch((err) => console.error("[notify] rejected email failed", listingId, safeError(err)));
 }

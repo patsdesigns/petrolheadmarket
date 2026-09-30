@@ -1,11 +1,11 @@
 ---
 import Base from "../layouts/Base.astro";
-import { url, siteUrl } from "../lib/paths";
+import { url, siteUrl, GARAGE } from "../lib/paths";
 import { supportEmail } from "../lib/config";
 import { contactHref } from "../lib/contact";
 
 // Only for suspended accounts (and people turned away at sign in).
-if (Astro.locals.user) return Astro.redirect(url("/"), 303);
+if (Astro.locals.user) return Astro.redirect(url(GARAGE), 303);
 
 const support = supportEmail();
 const helpHref = contactHref("suspended", { subject: "My account is suspended" });

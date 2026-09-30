@@ -1,0 +1,264 @@
+---
+import Base from "../layouts/Base.astro";
+import Notice from "../components/Notice.astro";
+import StatusBadge from "../components/StatusBadge.astro";
+import { url } from "../lib/paths";
+import { canTransact } from "../lib/config";
+import { listForUser } from "../lib/listings";
+import { formatMiles, formatPrice, listingTitle } from "../lib/listing-rules";
+import { isEditable } from "../lib/listings";
+import { offersNeedingResponse } from "../lib/offers";
+
+const user = Astro.locals.user!;
+const mine = await listForUser(user.id);
+const notice = Astro.url.searchParams.get("notice");
+const needResponse = await offersNeedingResponse(user.id);
+const unread = Astro.locals.unread;
+// Admins only (role admin), so this never reveals the admin list. With email
+// off it is how the owner hears about new work.
+const todo = Astro.locals.profile?.role === "admin" ? Astro.locals.adminCounts : null;
+const todoParts = todo
+  ? [
+      todo.review > 0 && `${todo.review} listing${todo.review === 1 ? "" : "s"} to review`,
+      todo.contact > 0 && `${todo.contact} contact request${todo.contact === 1 ? "" : "s"}`,
+      todo.flags > 0 && `${todo.flags} flagged item${todo.flags === 1 ? "" : "s"}`,
+    ].filter((p): p is string => Boolean(p))
+  : [];
+const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_accepted").length;
+---
+
+<Base title="My garage">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">My garage</h1>
+      <p class="lede">Your cars, offers and messages in one place.</p>
+    </div>
+    <a class="btn" href={url("/sell")}>{mine.length > 0 ? "List another car" : "Sell your car"}</a>
+  </div>
+
+  <div class="stats">
+    <div class="card stat"><span class="stat__n">{mine.length}</span><span class="label">Listings</span></div>
+    <div class="card stat"><span class="stat__n">{liveCount}</span><span class="label">Live now</span></div>
+    <a class:list={["card", "stat", { "is-alert": needResponse > 0 }]} href={url("/offers")}><span class="stat__n">{needResponse}</span><span class="label">Offers waiting on you</span></a>
+    <a class:list={["card", "stat", { "is-alert": unread > 0 }]} href={url("/inbox")}><span class="stat__n">{unread}</span><span class="label">Unread messages</span></a>
+  </div>
+
+  {
+    todoParts.length > 0 && (
+      <Notice tone="info">
+        <p>
+          Admin to do: {todoParts.join(", ")}. <a href={url(todo!.review > 0 ? "/admin" : todo!.contact > 0 ? "/admin/contact" : "/admin/flags")}>Open the admin pages</a>
+        </p>
+      </Notice>
+    )
+  }
+  {notice === "deleted" && <Notice tone="ok"><p>Draft deleted.</p></Notice>}
+  {notice === "deleted-listing" && <Notice tone="ok"><p>Listing deleted, with its photos.</p></Notice>}
+  {notice === "deleted-kept" && (
+    <Notice tone="ok"><p>Listing and photos deleted. Your conversations with buyers stay in your inbox.</p></Notice>
+  )}
+  {
+    !canTransact(user) && (
+      <Notice tone="info">
+        <p>
+          <a href={url("/verify-email")}>Confirm your email</a> to submit listings, make offers and message sellers.
+        </p>
+      </Notice>
+    )
+  }
+
+  {
+    mine.length === 0 ? (
+      <div class="card empty">
+        <h2>Ready to sell your car?</h2>
+        <p>
+          List it for free. A real person reviews every listing before it goes live, so buyers know they are looking at
+          an honest car.
+        </p>
+        <a class="btn" href={url("/sell")}>Start a listing</a>
+      </div>
+    ) : (
+      <section aria-labelledby="listings-h">
+        <h2 id="listings-h" class="label">Your listings</h2>
+        <ul class="cars">
+          {mine.map((l) => (
+            <li class="card tile car">
+              <a class="car__link" href={isEditable(l) && l.status === "draft" ? url(`/listings/${l.id}/edit`) : url(`/listings/${l.id}`)}>
+                <div class:list={["car__photo", { stripes: !l.mainPhoto }]}>
+                  {l.mainPhoto && <img src={l.mainPhoto} alt="" loading="lazy" />}
+                  {!l.mainPhoto && <span class="car__nophoto">No photos yet</span>}
+                  <span class="car__count">{l.photoCount} photos</span>
+                </div>
+                <div class="car__body">
+                  <div class="car__title-row">
+                    <h3 class="car__name">{listingTitle(l)}</h3>
+                    <span class="price">{formatPrice(l.price) || "No price"}</span>
+                  </div>
+                  <div class="car__specs">
+                    <span>{l.mileage !== null ? `${formatMiles(l.mileage)} mi` : "Mileage not set"}</span>
+                    <StatusBadge status={l.status} />
+                  </div>
+                </div>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+</Base>
+
+<style>
+  .head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .head h1 {
+    margin: 0;
+  }
+  .todo {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+  .todo__item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    text-decoration: none;
+    color: var(--ink);
+    font-weight: 700;
+    box-shadow: inset 4px 0 0 var(--red), var(--glass-shadow);
+  }
+  .todo__n {
+    display: grid;
+    place-items: center;
+    min-width: 36px;
+    height: 36px;
+    border-radius: 999px;
+    background: var(--red);
+    color: #fff;
+    font-family: var(--font-mono);
+  }
+  .empty {
+    display: grid;
+    gap: 12px;
+    justify-items: start;
+    max-width: 560px;
+  }
+  .empty h2 {
+    font-size: 24px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .empty p {
+    margin: 0;
+    color: var(--muted);
+  }
+  .cars {
+    list-style: none;
+    padding: 0;
+    margin: 12px 0 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 22px;
+  }
+  @media (max-width: 900px) {
+    .cars {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+  @media (max-width: 560px) {
+    .cars {
+      grid-template-columns: 1fr;
+    }
+  }
+  .car {
+    padding: 0;
+    overflow: hidden;
+  }
+  .car__link {
+    display: block;
+    text-decoration: none;
+    color: inherit;
+  }
+  /* phm-photo */
+  .car__photo {
+    position: relative;
+    aspect-ratio: 4 / 3;
+    display: grid;
+    place-items: center;
+  }
+  .car__photo img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .car__nophoto {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  /* phm-photocount */
+  .car__count {
+    position: absolute;
+    right: 12px;
+    bottom: 10px;
+    padding: 4px 8px;
+    border-radius: 999px;
+    background: rgba(21, 23, 27, 0.7);
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .car__body {
+    padding: 14px 14px 13px;
+  }
+  /* phm-title-row, phm-car, phm-price */
+  .car__title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .car__name {
+    margin: 0;
+    font-size: 16.5px;
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .car__title-row .price {
+    font-size: 16px;
+    white-space: nowrap;
+  }
+  /* phm-specs */
+  .car__specs {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--hair);
+    color: var(--muted);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+  }
+</style>

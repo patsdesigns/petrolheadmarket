@@ -1,8 +1,10 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "petrolheadmarket-app",
+  "name": "petrolheadmarket",
   "compatibility_date": "2025-04-15",
-  "compatibility_flags": ["nodejs_compat"],
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
   "assets": {
     "binding": "ASSETS",
     "directory": "./dist/client"
@@ -13,8 +15,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "petrolheadmarket",
-      "database_id": "00000000-0000-0000-0000-000000000000",
+      "database_name": "petrolheadmarket-db",
       "migrations_dir": "drizzle"
     }
   ],

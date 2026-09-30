@@ -18,7 +18,8 @@
     "cf-typegen": "wrangler types",
     "db:generate": "drizzle-kit generate",
     "db:migrate:local": "wrangler d1 migrations apply DB --local",
-    "auth:schema": "npx -y auth@1.7.6 generate --config scripts/auth-schema.config.ts --output src/db/auth-schema.ts --yes"
+    "auth:schema": "npx -y auth@1.7.6 generate --config scripts/auth-schema.config.ts --output src/db/auth-schema.ts --yes",
+    "deploy": "wrangler deploy && wrangler d1 migrations apply DB --remote"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^14.3.3",

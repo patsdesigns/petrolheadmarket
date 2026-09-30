@@ -1,12 +1,12 @@
+import { SITE_NAME } from "./brand";
 import { and, desc, eq, gt, lt, ne, or } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { listings, offers, profiles, user as users, type Listing, type Offer } from "../db/schema";
 import { audit } from "./audit";
-import { syncListing } from "./cms";
 import { absoluteUrl } from "./config";
 import { sendEmail } from "./email";
 import { formatPrice, listingTitle } from "./listing-rules";
-import { url } from "./paths";
+import { url, GARAGE } from "./paths";
 import { isSuspended } from "./profile";
 import { scamCheck } from "./messaging";
 import { safeError } from "./log";
@@ -58,7 +58,7 @@ export function offerPhrase(o: { madeBy: string; amount: number }): string {
  */
 function noteLines(message: string | null, flagged: boolean): string[] {
   if (!message) return [];
-  if (flagged) return ["They added a note. Read it on Petrol Head Market."];
+  if (flagged) return [`They added a note. Read it on ${SITE_NAME}.`];
   return [`Their note: "${message}"`];
 }
 
@@ -68,7 +68,7 @@ function notifyIfWanted(p: { email: string; notify: boolean }, email: Parameters
 }
 
 export type OfferResult =
-  | { ok: true; offer?: Offer; syncFailed?: { listingId: string; bySeller: boolean } }
+  | { ok: true; offer?: Offer }
   | { ok: false; error: string };
 
 export async function createOffer(
@@ -250,8 +250,7 @@ export async function withdrawOffer(offerId: string, buyerId: string): Promise<O
 }
 
 /**
- * Accept an offer or a counter. The listing moves to offer_accepted (and the
- * CMS is updated), every other open offer on it is declined with a notice,
+ * Accept an offer or a counter. The listing moves to offer_accepted, every other open offer on it is declined with a notice,
  * and both people get each other's contact details.
  */
 export async function acceptOffer(offerId: string, actorId: string): Promise<OfferResult> {
@@ -296,7 +295,6 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
     .all();
 
   await audit(actorId, "offer_accepted", "listing", listing.id, { offerId: offer.id, amount: offer.amount });
-  const sync = await syncListing(listing.id, actorId);
 
   const title = listingTitle(listing);
   const [buyer, seller] = await Promise.all([person(offer.buyerId), person(listing.userId)]);
@@ -322,8 +320,8 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
         `Contact the buyer to arrange an inspection and payment: ${buyer.displayName}, ${buyer.email}.`,
         "When the sale is done, mark the car as sold in My garage. If the deal falls through, you can relist it.",
       ],
-      // Through sign in: a signed-out visit to /app goes to the Lot instead.
-      action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url("/"))}`) },
+      // Through sign in, so a signed-out seller lands in My garage after signing in.
+      action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`) },
     }).catch((e) => console.error("[offers] accept email failed", safeError(e))),
   ]);
 
@@ -339,8 +337,6 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
       ],
     });
   }
-  // Only the seller can retry the update (from their listing page).
-  if (!sync.ok) return { ok: true, syncFailed: { listingId: listing.id, bySeller: actorId === listing.userId } };
   return { ok: true };
 }
 

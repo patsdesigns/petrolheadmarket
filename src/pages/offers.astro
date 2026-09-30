@@ -3,7 +3,7 @@ import { z } from "zod";
 import Base from "../layouts/Base.astro";
 import Notice from "../components/Notice.astro";
 import StatusBadge from "../components/StatusBadge.astro";
-import { url, siteUrl } from "../lib/paths";
+import { url, carUrl } from "../lib/paths";
 import { formatPrice, listingTitle } from "../lib/listing-rules";
 import {
   acceptOffer,
@@ -25,7 +25,7 @@ if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const intent = String(form.get("intent") ?? "");
   const offerId = String(form.get("offerId") ?? "").slice(0, 64);
-  let result: { ok: boolean; error?: string; syncFailed?: { listingId: string; bySeller: boolean } } = {
+  let result: { ok: boolean; error?: string } = {
     ok: false,
     error: "Unknown action.",
   };
@@ -53,11 +53,7 @@ if (Astro.request.method === "POST") {
       }
     }
   }
-  if (result.ok && !counterFor) {
-    // The seller is told when the Lot could not be updated, with a link to retry.
-    const stale = result.syncFailed?.bySeller ? `&stale=${encodeURIComponent(result.syncFailed.listingId)}` : "";
-    return Astro.redirect(`${url("/offers")}?done=${intent}${stale}`, 303);
-  }
+  if (result.ok && !counterFor) return Astro.redirect(`${url("/offers")}?done=${intent}`, 303);
   if (!result.ok) actionError = result.error ?? "Something went wrong.";
 }
 
@@ -81,8 +77,6 @@ const names = new Map<string, string>();
 for (const t of received) if (!names.has(t.buyerId)) names.set(t.buyerId, (await contactFor(t.buyerId)).displayName);
 
 const done = Astro.url.searchParams.get("done");
-const staleId = Astro.url.searchParams.get("stale");
-const staleListing = staleId && /^[0-9a-f-]{36}$/.test(staleId) ? staleId : null;
 const emailOn = emailConfigured();
 const doneText: Record<string, string> = {
   accept: emailOn
@@ -152,9 +146,6 @@ const waitingOnMe = (t: OfferThread) =>
   </div>
   {Astro.url.searchParams.get("sent") && <Notice tone="ok"><p>{emailOn && Astro.locals.profile?.emailNotifications ? "Offer sent. We will email you when the seller responds." : "Offer sent. Check Offers for the seller's reply."}</p></Notice>}
   {done && doneText[done] && <Notice tone="ok"><p>{doneText[done]}</p></Notice>}
-  {done === "accept" && staleListing && (
-    <Notice tone="error"><p>The public listing could not be updated yet, so it may still show as for sale. <a href={url(`/listings/${staleListing}`)}>Open the listing to retry</a>.</p></Notice>
-  )}
   {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
 
   <div class="columns">
@@ -178,7 +169,7 @@ const waitingOnMe = (t: OfferThread) =>
                   {t.listing.deletedAt ? (
                     <span class="offer__car">{listingTitle(t.listing)}</span>
                   ) : (
-                    <a class="offer__car" href={t.listing.slug && ["live", "offer_accepted", "sold"].includes(t.listing.status) ? siteUrl(`/listings/${t.listing.slug}`) : t.role === "seller" ? url(`/listings/${t.listing.id}`) : undefined}>
+                    <a class="offer__car" href={t.listing.slug && ["live", "offer_accepted", "sold"].includes(t.listing.status) ? carUrl(t.listing.slug) : t.role === "seller" ? url(`/listings/${t.listing.id}`) : undefined}>
                       {listingTitle(t.listing)}
                     </a>
                   )}

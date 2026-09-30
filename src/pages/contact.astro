@@ -3,13 +3,13 @@ import { z } from "zod";
 import AuthLayout from "../layouts/AuthLayout.astro";
 import Field from "../components/Field.astro";
 import Notice from "../components/Notice.astro";
-import { url, siteUrl } from "../lib/paths";
+import { url, siteUrl, GARAGE } from "../lib/paths";
 import { emailField, parseForm } from "../lib/forms";
 import { CONTACT_TOPICS, createContactRequest, isContactTopic } from "../lib/contact";
 
 // Contact the team. Open to everyone, signed in or not (a suspended member
 // or someone locked out of their account needs it too). Messages are stored
-// in D1 and read on /app/admin/contact, so this works with email off.
+// in D1 and read on /admin/contact, so this works with email off.
 const user = Astro.locals.user;
 const profile = Astro.locals.profile;
 const params = Astro.url.searchParams;
@@ -71,7 +71,7 @@ const listingId = values.listing ?? listingParam ?? "";
         <Notice tone="ok">
           <p>Thanks. Your message reached our team. We will reply by email to {sentTo}.</p>
         </Notice>
-        <a class="btn btn--secondary" href={user ? url("/") : siteUrl("/")}>{user ? "Back to My garage" : "Back to the Lot"}</a>
+        <a class="btn btn--secondary" href={user ? url(GARAGE) : siteUrl("/")}>{user ? "Back to My garage" : "Back to the Lot"}</a>
       </>
     ) : (
       <>

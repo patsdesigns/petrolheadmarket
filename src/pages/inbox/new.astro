@@ -4,7 +4,7 @@
 import Base from "../../layouts/Base.astro";
 import Notice from "../../components/Notice.astro";
 import SafetyNote from "../../components/SafetyNote.astro";
-import { url, siteUrl } from "../../lib/paths";
+import { url, carUrl } from "../../lib/paths";
 import { formatPrice, listingTitle } from "../../lib/listing-rules";
 import { offerForSeller, sendMessage, MAX_MESSAGE } from "../../lib/messaging";
 import { canTransact } from "../../lib/config";
@@ -39,7 +39,7 @@ if (Astro.request.method === "POST") {
   <div class="card compose">
     <p class="about">
       {buyerName} offered {formatPrice(offer.amount)} for your{" "}
-      {listing.slug && onSite ? <a href={siteUrl(`/listings/${listing.slug}`)}>{listingTitle(listing)}</a> : listingTitle(listing)}.
+      {listing.slug && onSite ? <a href={carUrl(listing.slug)}>{listingTitle(listing)}</a> : listingTitle(listing)}.
     </p>
     <SafetyNote />
     {!onSite ? (

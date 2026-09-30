@@ -1,6 +1,6 @@
 ---
 import { formatMiles, formatPrice, listingTitle } from "../lib/listing-rules";
-import { siteUrl } from "../lib/paths";
+import { carUrl } from "../lib/paths";
 import type { Listing } from "../db/schema";
 
 interface Props {
@@ -14,7 +14,7 @@ const { listing, mainPhoto, sellerName, size = "compact" } = Astro.props;
 const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
 ---
 
-<a class:list={["car-sum", "card", { "car-sum--large": size === "large" }]} href={listing.slug ? siteUrl(`/listings/${listing.slug}`) : undefined}>
+<a class:list={["car-sum", "card", { "car-sum--large": size === "large" }]} href={listing.slug ? carUrl(listing.slug) : undefined}>
   {mainPhoto ? <img src={mainPhoto} alt="" /> : <span class="car-sum__ph"></span>}
   <span class="car-sum__body">
     <strong>{listingTitle(listing)}</strong>

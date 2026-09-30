@@ -1,4 +1,5 @@
 ---
+import { SITE_NAME } from "../lib/brand";
 import Base from "../layouts/Base.astro";
 import Notice from "../components/Notice.astro";
 import { url } from "../lib/paths";
@@ -77,7 +78,7 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
         <li>Describe the car and add photos.</li>
         <li>Set your price and choose how buyers reach you.</li>
         <li>Submit for review. We check it, usually within a day.</li>
-        <li>It goes live on Petrol Head Market. Buyers message you or make offers.</li>
+        <li>It goes live on {SITE_NAME}. Buyers message you or make offers.</li>
       </ol>
       {
         !canTransact(user) && (

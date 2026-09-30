@@ -8,8 +8,8 @@ import { basePath } from "./paths";
 /**
  * App rate limits for account actions, stored in D1 (auth_limits).
  *
- * Better Auth's own limiter is off: behind Webflow's proxy the client IP is
- * often unknown (every visitor shared one bucket) or could be spoofed. These
+ * Better Auth's own limiter is off: it could key by an IP header the client
+ * can spoof, or by no IP at all (every visitor in one bucket). These
  * limits are keyed by the email address the action is about, plus by
  * cf-connecting-ip only when Cloudflare sets it and it is not one of
  * Cloudflare's own addresses. Keys store a SHA-256 hash, never the address
@@ -28,7 +28,8 @@ interface Rule {
 
 // The IP limits are well above the email limits: until the live site shows
 // that cf-connecting-ip is the visitor's own address (and not the address of
-// Webflow's proxy, which would put every visitor in one bucket), they are
+// a proxy in front of the Worker, which would put every visitor in one
+// bucket), they are
 // only a backstop against one machine hammering many addresses.
 const RULES: Record<LimitAction, { email: Rule; ip: Rule }> = {
   // Failed sign ins (and failed current-password checks).
@@ -48,7 +49,7 @@ interface Bucket extends Rule {
 
 /**
  * Sign ups for the whole site per hour, whatever the address or IP. The IP
- * is often unknown behind Webflow's proxy, and while email is off a new
+ * can be unknown (see IP_HEADERS in config.ts), and while email is off a new
  * account can offer and message at once, so without this one script could
  * make any number of throwaway accounts, each with a fresh offer and message
  * allowance. SIGNUP_HOURLY_MAX overrides the default of 30. Read env inside
@@ -65,7 +66,7 @@ async function sha256(value: string): Promise<string> {
 }
 
 // Cloudflare's published ranges (cloudflare.com/ips). A Worker in front of
-// the app, like Webflow's proxy, reaches us from one of these, so such a
+// the app (a proxy Worker) reaches us from one of these, so such a
 // value names the proxy, not the visitor.
 const CLOUDFLARE_V4 = [
   "173.245.48.0/20", "103.21.244.0/22", "103.22.200.0/22", "103.31.4.0/22", "141.101.64.0/18",

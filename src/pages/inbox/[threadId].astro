@@ -8,7 +8,7 @@ import "../../styles/inbox.css";
 import InboxList from "../../components/InboxList.astro";
 import { getDb } from "../../db/client";
 import { profiles } from "../../db/schema";
-import { url, siteUrl } from "../../lib/paths";
+import { url, carUrl } from "../../lib/paths";
 import { formatPrice, listingTitle } from "../../lib/listing-rules";
 import { getThreadForUser, inboxFor, markRead, MAX_MESSAGE, unreadCount } from "../../lib/messaging";
 import { threadView } from "../../lib/thread-view";
@@ -54,7 +54,7 @@ const offerLink = listing.slug && !isSeller && listing.status === "live" && list
       <h2 class="who">{participant ? otherName : "Conversation"}</h2>
       <p class="about">
         {isSeller ? "About your " : "About the "}
-        {listing.slug && onSite ? <a href={siteUrl(`/listings/${listing.slug}`)}>{listingTitle(listing)}</a> : listingTitle(listing)}
+        {listing.slug && onSite ? <a href={carUrl(listing.slug)}>{listingTitle(listing)}</a> : listingTitle(listing)}
         {listing.price && <span class="price"> · {formatPrice(listing.price)}</span>}
         {offerLink && <> · <a href={offerLink}>Make an offer</a></>}
       </p>

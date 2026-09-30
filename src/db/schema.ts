@@ -20,7 +20,7 @@ export const profiles = sqliteTable("profiles", {
   emailNotifications: integer("email_notifications", { mode: "boolean" })
     .notNull()
     .default(true),
-  // Set by an admin (/app/admin/users). A suspended person is treated as
+  // Set by an admin (/admin/users). A suspended person is treated as
   // signed out, cannot sign in, and cannot message or make offers.
   suspendedAt: integer("suspended_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
@@ -94,16 +94,11 @@ export const listings = sqliteTable(
 
     // Review and publishing
     slug: text("slug").unique(),
+    // Legacy columns from when listings were copied to a Webflow CMS. Kept so
+    // no migration is needed; nothing reads them any more.
     cmsItemId: text("cms_item_id"),
-    // Set while a publish is running, so a double-clicked Approve or Retry
-    // (or the lazy retry) can't create two CMS items. Stale after 2 minutes.
     publishingAt: integer("publishing_at", { mode: "timestamp_ms" }),
-    // The CMS does not match the app yet: a sync or an unpublish failed.
-    // Retried from the admin pages (see retryPendingCms in src/lib/cms.ts).
     cmsSyncPending: integer("cms_sync_pending", { mode: "boolean" }).notNull().default(false),
-    // Last publish, sync or unpublish attempt. The lazy retry takes the
-    // listings tried longest ago first, so a few that keep failing can't
-    // keep the rest waiting.
     cmsAttemptedAt: integer("cms_attempted_at", { mode: "timestamp_ms" }),
     // Set when the seller deletes a listing that has offers or messages. The
     // row stays so buyers keep their threads and admins keep the evidence,
@@ -144,7 +139,7 @@ export const listingPhotos = sqliteTable(
 
 export type ListingPhoto = typeof listingPhotos.$inferSelect;
 
-// Every admin action and every CMS publish is logged here.
+// Every admin action and every publish is logged here.
 export const auditLog = sqliteTable(
   "audit_log",
   {
@@ -261,15 +256,15 @@ export const authLimits = sqliteTable("auth_limits", {
   windowStart: integer("window_start").notNull(),
 });
 
-// Last run of background jobs that have no cron (see src/lib/cms.ts
-// retryPendingCms). One row per job, used to throttle it.
+// Last run of background jobs that have no cron. One row per job, used to
+// throttle it. Unused since the Webflow CMS retry was removed.
 export const jobRuns = sqliteTable("job_runs", {
   name: text("name").primaryKey(),
   ranAt: integer("ran_at").notNull(),
 });
 
-// Messages to the team from the Contact the team form (/app/contact). Works
-// with email off: admins read them on /app/admin/contact and reply from
+// Messages to the team from the Contact the team form (/contact). Works
+// with email off: admins read them on /admin/contact and reply from
 // their own inbox. The user is kept when the sender was signed in.
 export const contactRequests = sqliteTable(
   "contact_requests",

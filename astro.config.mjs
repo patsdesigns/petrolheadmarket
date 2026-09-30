@@ -2,15 +2,15 @@ import { defineConfig } from "astro/config";
 import cloudflare from "@astrojs/cloudflare";
 import react from "@astrojs/react";
 
-// Webflow Cloud mounts this app at /app on the public site.
-// Every internal URL must go through the helpers in src/lib/paths.ts.
+// The whole site (the Lot, car pages and every account page) is this one app,
+// served from the site root on Cloudflare Workers.
+// Every internal URL goes through the helpers in src/lib/paths.ts.
 export default defineConfig({
-  base: "/app",
   trailingSlash: "never",
   output: "server",
   compressHTML: true,
-  // Our middleware checks Origin against PUBLIC_SITE_URL instead, because
-  // behind the Webflow proxy the request URL may not match the browser origin.
+  // Our middleware checks Origin itself (against PUBLIC_SITE_URL and the
+  // request's own origin), so a custom domain and workers.dev both work.
   security: { checkOrigin: false },
   adapter: cloudflare({
     // Photos are resized in the browser and served straight from R2.

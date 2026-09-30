@@ -48,7 +48,7 @@ function tooMany<T>(waitSec: number, busy = false): AuthCallResult<T> {
  * Call a Better Auth endpoint from a server-rendered form handler.
  *
  * Goes through `auth.handler` in process, so Better Auth's origin checks
- * apply. The public /app/api/auth/* route only serves the GET links in
+ * apply. The public /api/auth/* route only serves the GET links in
  * emails, so every sign in, sign up, reset and change comes through here,
  * behind the app's own rate limits. The request's own origin was already
  * checked by our middleware.
@@ -99,7 +99,7 @@ export async function callAuth<T = unknown>(
       }),
     );
   } catch (err) {
-    // Usually a missing setting such as BETTER_AUTH_SECRET. See /app/api/health.
+    // Usually a missing setting such as BETTER_AUTH_SECRET. See /api/health.
     console.error("[auth] handler failed", safeError(err));
     if (limiter && limit?.failuresOnly) await limiter.release().catch(() => undefined);
     return {

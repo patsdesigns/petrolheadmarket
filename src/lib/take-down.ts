@@ -1,9 +1,9 @@
+import { SITE_NAME } from "./brand";
 import { and, eq, inArray } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import { getDb } from "../db/client";
 import { listingPhotos, listings, offers, threads, user as users, type Listing, type ListingStatus } from "../db/schema";
 import { audit } from "./audit";
-import { removeFromCms, unpublishListing } from "./cms";
 import { absoluteUrl } from "./config";
 import { questionsLine } from "./contact";
 import { sendEmail } from "./email";
@@ -13,11 +13,11 @@ import { offerPhrase } from "./offers";
 import { url } from "./paths";
 import { safeError } from "./log";
 
-/** Sellers take down their own live listing; admins any listing that is on the site. */
+/** Sellers take down their own live listing; admins any listing that is on the Lot. */
 const SELLER_FROM: ListingStatus[] = ["live"];
 const ADMIN_FROM: ListingStatus[] = ["live", "offer_accepted", "sold"];
 
-export type TakeDownResult = { ok: true; unpublished: boolean } | { ok: false; error: string };
+export type TakeDownResult = { ok: true } | { ok: false; error: string };
 
 async function emailOf(userId: string) {
   const u = await getDb().select().from(users).where(eq(users.id, userId)).get();
@@ -56,8 +56,8 @@ export async function closeOffersOnTakeDown(listing: Listing, now = new Date()):
       subject: `The ${title} is no longer listed`,
       paragraphs: [
         o.status === "ended"
-          ? `The ${title} was taken off Petrol Head Market, so the ${formatPrice(o.amount)} deal is off.`
-          : `The ${title} was taken off Petrol Head Market, so ${offerPhrase(o)} was closed.`,
+          ? `The ${title} was taken off ${SITE_NAME}, so the ${formatPrice(o.amount)} deal is off.`
+          : `The ${title} was taken off ${SITE_NAME}, so ${offerPhrase(o)} was closed.`,
         "Never send money for a car you have not seen in person. There are more great cars on the site.",
       ],
     }).catch((err) => console.error("[take-down] buyer email failed", safeError(err)));
@@ -65,10 +65,9 @@ export async function closeOffersOnTakeDown(listing: Listing, now = new Date()):
 }
 
 /**
- * Take a listing off the site: it becomes `withdrawn`, open offers are
- * declined (an accepted deal is called off) with an email to each buyer, and
- * the CMS item is unpublished. The status change stands even if Webflow
- * fails; the unpublish is then retried from the admin pages.
+ * Take a listing off the Lot: it becomes `withdrawn` (which removes its car
+ * page right away) and open offers are declined (an accepted deal is called
+ * off) with an email to each buyer.
  */
 export async function takeDownListing(
   listing: Listing,
@@ -93,7 +92,7 @@ export async function takeDownListing(
   if (!done) {
     return {
       ok: false,
-      error: byAdmin ? "Only listings on the site can be taken down." : "Only live listings can be taken down.",
+      error: byAdmin ? "Only listings on the Lot can be taken down." : "Only live listings can be taken down.",
     };
   }
   await audit(actorId, "take_down", "listing", listing.id, {
@@ -112,11 +111,11 @@ export async function takeDownListing(
         to: seller.email,
         subject: `Your ${title} was taken down`,
         paragraphs: [
-          `Hi ${seller.name}, our team took your ${title} off Petrol Head Market. Open offers on it were closed.`,
+          `Hi ${seller.name}, our team took your ${title} off ${SITE_NAME}. Open offers on it were closed.`,
           opts.note,
           questionsLine(listing.id),
         ],
-        // Through sign in: a signed-out visit to /app goes to the Lot instead.
+        // Through sign in, so a signed-out seller lands on the listing after signing in.
         action: {
           label: "Open the listing",
           url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(`/listings/${listing.id}`))}`),
@@ -125,8 +124,7 @@ export async function takeDownListing(
     }
   }
 
-  const r = listing.cmsItemId ? await unpublishListing(listing.id, actorId) : { ok: true };
-  return { ok: true, unpublished: r.ok };
+  return { ok: true };
 }
 
 /** Statuses a seller can delete: drafts, and listings that are off the site for good. */
@@ -136,8 +134,7 @@ export type DeleteResult = { ok: true; was: ListingStatus; kept: boolean } | { o
 
 /**
  * Delete a listing and its photos in R2. Only by the owner, and only drafts,
- * rejected and withdrawn listings. A withdrawn listing's CMS item is removed
- * first; if it may still be live the delete waits.
+ * rejected and withdrawn listings.
  *
  * A listing with offers or messages is only hidden (deleted_at) and loses its
  * photos: the rows stay so buyers keep their offer history and threads, and
@@ -148,8 +145,6 @@ export async function deleteListing(userId: string, id: string): Promise<DeleteR
   if (!listing || !DELETABLE_STATUSES.includes(listing.status)) {
     return { ok: false, error: "Only drafts and listings that are off the site can be deleted." };
   }
-  const cms = await removeFromCms(listing);
-  if (!cms.ok) return { ok: false, error: cms.error ?? "It is still being taken off the site." };
   const db = getDb();
   const photos = await getPhotos(id);
   if (photos.length) await env.PHOTOS.delete(photos.map((p) => p.r2Key));

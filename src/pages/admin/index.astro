@@ -9,35 +9,11 @@ import { url } from "../../lib/paths";
 import { formatPrice, listingTitle } from "../../lib/listing-rules";
 import Notice from "../../components/Notice.astro";
 import { emailConfigured } from "../../lib/config";
-import { pendingCmsListings, retryPendingCms } from "../../lib/cms";
-import { NOT_CONFIGURED_MESSAGE, webflowConfigured } from "../../lib/webflow";
 
-// Middleware already limits /app/admin to admins; check again here.
+// Middleware already limits /admin to admins; check again here.
 if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
 
-const cmsConfigured = webflowConfigured();
-let retryNotice = "";
-
-if (Astro.request.method === "POST") {
-  const form = await Astro.request.formData();
-  if (form.get("intent") === "retry-all") {
-    const r = await retryPendingCms({ force: true });
-    const q = r ? `retried=${r.published}.${r.synced}.${r.failed}` : "retried=off";
-    return Astro.redirect(`${url("/admin")}?${q}`, 303);
-  }
-  return Astro.redirect(url("/admin"), 303);
-}
-
-const retried = Astro.url.searchParams.get("retried");
-if (retried === "off") retryNotice = NOT_CONFIGURED_MESSAGE;
-else if (retried) {
-  const [published, synced, failed] = retried.split(".").map((n) => Number(n) || 0);
-  const parts = [];
-  if (published) parts.push(`${published} published`);
-  if (synced) parts.push(`${synced} updated on the site`);
-  if (failed) parts.push(`${failed} still failing`);
-  retryNotice = parts.length ? `Retried: ${parts.join(", ")}.` : "Nothing needed retrying.";
-}
+if (Astro.request.method === "POST") return Astro.redirect(url("/admin"), 303);
 
 const db = getDb();
 const rows = await db
@@ -71,8 +47,6 @@ const photoCounts = new Map(
 const queue = rows.filter((r) => r.status === "submitted");
 const stuck = rows.filter((r) => r.status === "approved");
 
-const outOfSync = await pendingCmsListings();
-
 const recent = await db
   .select({ id: listings.id, status: listings.status, year: listings.year, make: listings.make, model: listings.model, reviewedAt: listings.reviewedAt })
   .from(listings)
@@ -100,17 +74,11 @@ const waited = (d: Date | null) => {
   <p class="lede">{queue.length === 0 ? "Nothing waiting. Nice." : `${queue.length} waiting, oldest first.`}</p>
   {done && doneText[done] && <Notice tone="ok"><p>{doneText[done]} {emailNote}</p></Notice>}
 
-  {retryNotice && <Notice tone={retried === "off" ? "info" : "ok"}><p>{retryNotice}</p></Notice>}
-
   {
     stuck.length > 0 && (
       <section class="card warn">
-        <h2>Approved, not on the site yet</h2>
-        <p class="muted">
-          {cmsConfigured
-            ? "Publishing to Webflow failed or is still running. These are retried about once a minute while you use the admin pages. Open one to see the error."
-            : NOT_CONFIGURED_MESSAGE}
-        </p>
+        <h2>Approved, not live yet</h2>
+        <p class="muted">These were approved but did not go live. Open one to see the error and publish it now.</p>
         <ul class="rows">
           {stuck.map((r) => (
             <li class="spec-row">
@@ -120,32 +88,6 @@ const waited = (d: Date | null) => {
           ))}
         </ul>
       </section>
-    )
-  }
-
-  {
-    outOfSync.length > 0 && (
-      <section class="card warn">
-        <h2>Site needs an update</h2>
-        <p class="muted">A change did not reach Webflow, so the Lot shows old details (or a car that was taken down). These are retried about once a minute while you use the admin pages. Open one to see the error or retry it now.</p>
-        <ul class="rows">
-          {outOfSync.map((r) => (
-            <li class="spec-row">
-              <a href={url(`/admin/listings/${r.id}`)}>{listingTitle(r)}</a>
-              <StatusBadge status={r.status} />
-            </li>
-          ))}
-        </ul>
-      </section>
-    )
-  }
-
-  {
-    cmsConfigured && (stuck.length > 0 || outOfSync.length > 0) && (
-      <form method="post" class="retry-all" onsubmit="return !this.dataset.sent && !!(this.dataset.sent = '1')">
-        <input type="hidden" name="intent" value="retry-all" />
-        <button class="btn btn--secondary" type="submit">Retry all now</button>
-      </form>
     )
   }
 
@@ -203,9 +145,6 @@ const waited = (d: Date | null) => {
   }
   .queue {
     margin-bottom: 40px;
-  }
-  .retry-all {
-    margin: -8px 0 20px;
   }
   .queue .car {
     font-weight: 700;

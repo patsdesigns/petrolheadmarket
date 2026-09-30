@@ -1,3 +1,4 @@
+import { SITE_NAME } from "./brand";
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
@@ -24,7 +25,7 @@ function checkName(name: unknown): string {
 }
 
 /**
- * Reset links an admin asked for on /app/admin/users (adminResetLink in
+ * Reset links an admin asked for on /admin/users (adminResetLink in
  * src/lib/admin-users.ts), keyed by a one-time id sent in a header. The
  * header only reaches Better Auth from that server call: the public auth
  * route serves no POSTs and callAuth() never forwards it, and an id that is
@@ -45,7 +46,7 @@ export const SUSPENDED_MESSAGE = "This account is suspended. Contact our team if
 function createAuth() {
   const origin = publicOrigin();
   return betterAuth({
-    appName: "Petrol Head Market",
+    appName: `${SITE_NAME}`,
     baseURL: origin,
     basePath: url("/api/auth"),
     secret: env.BETTER_AUTH_SECRET,
@@ -71,7 +72,7 @@ function createAuth() {
           to: user.email,
           subject: "Reset your password",
           paragraphs: [
-            `Hi ${user.name}, someone asked to reset the password for your Petrol Head Market account.`,
+            `Hi ${user.name}, someone asked to reset the password for your ${SITE_NAME} account.`,
             "The link works for one hour. If you did not ask for this, you can ignore this email.",
           ],
           action: { label: "Choose a new password", url: link },
@@ -102,7 +103,7 @@ function createAuth() {
           to: user.email,
           subject: "Confirm your email",
           paragraphs: [
-            `Hi ${user.name}, confirm your email to list a car, make offers and message sellers on Petrol Head Market.`,
+            `Hi ${user.name}, confirm your email to list a car, make offers and message sellers on ${SITE_NAME}.`,
             "The link works for 24 hours. If you did not create this account, ignore this email and do not open the link.",
           ],
           action: { label: "Confirm my email", url: link },
@@ -124,9 +125,8 @@ function createAuth() {
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
     },
-    // Off on purpose. Behind Webflow's proxy the visitor IP is often unknown,
-    // which put every visitor in one bucket, and other IP headers can be
-    // spoofed. callAuth() applies the app's own limits (src/lib/auth-limits.ts).
+    // Off on purpose. Better Auth may key by an IP header the client can
+    // spoof, or by no IP at all (every visitor in one bucket). callAuth() applies the app's own limits (src/lib/auth-limits.ts).
     rateLimit: { enabled: false },
     // Better Auth logs failed queries with the whole error, and drizzle puts
     // the bound params (session tokens, emails) in the message. Log only the
