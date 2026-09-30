@@ -1,24 +1,29 @@
 ---
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import Base from "../layouts/Base.astro";
 import Field from "../components/Field.astro";
 import Notice from "../components/Notice.astro";
 import { getDb } from "../db/client";
-import { profiles } from "../db/schema";
+import { listings, profiles } from "../db/schema";
+import { displayNameField } from "../lib/profile";
+import { syncListing } from "../lib/cms";
 import { url } from "../lib/paths";
 import { emailField, parseForm, passwordField } from "../lib/forms";
 import { callAuth, friendlyAuthError, redirectWithCookies } from "../lib/auth-call";
+import { canTransact, emailConfigured } from "../lib/config";
 
 const user = Astro.locals.user!;
 let profile = Astro.locals.profile!;
+// Changing email works through a link sent to the new address.
+const emailOn = emailConfigured();
 
 type Section = "profile" | "email" | "password";
 const errors: Record<Section, Record<string, string>> = { profile: {}, email: {}, password: {} };
 const formErrors: Partial<Record<Section, string>> = {};
 let values: Record<string, string> = {};
 
-const saved = Astro.url.searchParams.get("saved") as Section | "email-sent" | null;
+const saved = Astro.url.searchParams.get("saved") as Section | "email-sent" | "profile-pending" | "owner-reset" | null;
 
 const phoneField = z
   .string()
@@ -36,7 +41,7 @@ if (Astro.request.method === "POST") {
     const parsed = await parseForm(
       Astro.request,
       z.object({
-        displayName: z.string().trim().min(2, "Enter a display name.").max(40, "Use 40 characters or fewer."),
+        displayName: displayNameField,
         phone: phoneField,
         emailNotifications: z.string().optional(),
       }),
@@ -53,9 +58,25 @@ if (Astro.request.method === "POST") {
           emailNotifications: parsed.data.emailNotifications === "on",
         })
         .where(eq(profiles.userId, user.id));
-      return Astro.redirect(`${url("/account")}?saved=profile`, 303);
+      // The name is on the public listing, so push it to the site now.
+      let synced = true;
+      if (parsed.data.displayName !== profile.displayName) {
+        const published = await getDb()
+          .select({ id: listings.id })
+          .from(listings)
+          .where(and(eq(listings.userId, user.id), inArray(listings.status, ["live", "offer_accepted", "sold"]), isNotNull(listings.cmsItemId)))
+          .limit(20)
+          .all();
+        // One at a time to stay inside Webflow's rate limit. A failed sync
+        // is logged on the listing and does not undo the save.
+        for (const l of published) {
+          const r = await syncListing(l.id, user.id).catch(() => ({ ok: false }));
+          if (!r.ok) synced = false;
+        }
+      }
+      return Astro.redirect(`${url("/account")}?saved=${synced ? "profile" : "profile-pending"}`, 303);
     }
-  } else if (intent === "email") {
+  } else if (intent === "email" && emailOn) {
     const parsed = await parseForm(Astro.request, z.object({ newEmail: emailField }));
     values = parsed.values;
     if (!parsed.ok) {
@@ -63,16 +84,24 @@ if (Astro.request.method === "POST") {
     } else if (parsed.data.newEmail === user.email) {
       errors.email = { newEmail: "That is already your email." };
     } else {
+      // Limited by the new address and by this account's own address, so one
+      // account can't send confirmation emails to address after address.
       const result = await callAuth(Astro.request, "/change-email", {
         newEmail: parsed.data.newEmail,
         callbackURL: `${url("/account")}?saved=email`,
-      });
+      }, "POST", user.email);
       if (result.ok) {
         // The change only happens once the new address is confirmed.
         return Astro.redirect(`${url("/account")}?saved=email-sent`, 303);
       }
       formErrors.email = friendlyAuthError(result);
     }
+  } else if (intent === "owner-reset" && !emailOn && !user.emailVerified) {
+    // While email is off, an ADMIN_EMAILS address is confirmed with a password
+    // reset whose link goes to the site log (src/lib/auth.ts). Every other
+    // address gets nothing, and the answer is the same either way.
+    await callAuth(Astro.request, "/request-password-reset", { email: user.email, redirectTo: url("/reset-password") });
+    return Astro.redirect(`${url("/account")}?saved=owner-reset`, 303);
   } else if (intent === "password") {
     const parsed = await parseForm(
       Astro.request,
@@ -91,7 +120,7 @@ if (Astro.request.method === "POST") {
         currentPassword: parsed.data.currentPassword,
         newPassword: parsed.data.newPassword,
         revokeOtherSessions: true,
-      });
+      }, "POST", user.email);
       if (result.ok) return redirectWithCookies(`${url("/account")}?saved=password`, result.cookies);
       formErrors.password = friendlyAuthError(result);
     }
@@ -111,7 +140,7 @@ const notifyChecked = values.displayName !== undefined ? values.emailNotificatio
   </div>
 
   {
-    !user.emailVerified && (
+    !canTransact(user) && (
       <Notice tone="info">
         <p>
           Your email is not confirmed yet. <a href={url("/verify-email")}>Confirm it</a> to list a car, make offers and
@@ -126,6 +155,9 @@ const notifyChecked = values.displayName !== undefined ? values.emailNotificatio
     <section class="card" aria-labelledby="profile-h">
       <h2 id="profile-h">Profile</h2>
       {saved === "profile" && <Notice tone="ok"><p>Profile saved.</p></Notice>}
+      {saved === "profile-pending" && (
+        <Notice tone="ok"><p>Profile saved. Your public listings will show the new name once the site updates.</p></Notice>
+      )}
       <form method="post" novalidate>
         <input type="hidden" name="intent" value="profile" />
         <Field name="displayName" label="Display name" autocomplete="nickname" value={v("displayName", profile.displayName)}
@@ -147,16 +179,23 @@ const notifyChecked = values.displayName !== undefined ? values.emailNotificatio
     <section class="card" aria-labelledby="email-h">
       <h2 id="email-h">Email</h2>
       {saved === "email" && <Notice tone="ok"><p>Your email was updated.</p></Notice>}
-      {saved === "email-sent" && (
+      {saved === "email-sent" && emailOn && (
         <Notice tone="ok"><p>Check your new inbox. The change happens when you open the link we sent.</p></Notice>
       )}
       {formErrors.email && <Notice tone="error"><p>{formErrors.email}</p></Notice>}
-      <form method="post" novalidate>
-        <input type="hidden" name="intent" value="email" />
-        <Field name="newEmail" label="New email" type="email" inputmode="email" autocomplete="email"
-          value={values.newEmail} error={errors.email.newEmail} maxlength={254} />
-        <button class="btn btn--secondary" type="submit">Change email</button>
-      </form>
+      {emailOn ? (
+        <form method="post" novalidate>
+          <input type="hidden" name="intent" value="email" />
+          <Field name="newEmail" label="New email" type="email" inputmode="email" autocomplete="email"
+            value={values.newEmail} error={errors.email.newEmail} maxlength={254} />
+          <button class="btn btn--secondary" type="submit">Change email</button>
+        </form>
+      ) : (
+        <p class="muted">
+          Changing your email needs a confirmation link sent to the new address, and email is not switched on yet. Your
+          email stays {user.email} for now.
+        </p>
+      )}
     </section>
 
     <section class="card" aria-labelledby="password-h">
@@ -173,6 +212,27 @@ const notifyChecked = values.displayName !== undefined ? values.emailNotificatio
           error={errors.password.confirm} maxlength={128} />
         <button class="btn btn--secondary" type="submit">Change password</button>
       </form>
+      {
+        !emailOn && !user.emailVerified && (
+          <details class="owner" open={saved === "owner-reset"}>
+            <summary>Site owner</summary>
+            {saved === "owner-reset" ? (
+              <p>If this is an owner account, a reset link was written to the site log. It works for one hour.</p>
+            ) : (
+              <>
+                <p class="muted">
+                  Owner accounts are confirmed with a password reset. The link is written to the site log, and you sign in
+                  again after choosing the new password.
+                </p>
+                <form method="post">
+                  <input type="hidden" name="intent" value="owner-reset" />
+                  <button class="btn btn--secondary" type="submit">Write a reset link to the log</button>
+                </form>
+              </>
+            )}
+          </details>
+        )
+      }
     </section>
     </div>
   </div>
@@ -193,6 +253,26 @@ const notifyChecked = values.displayName !== undefined ? values.emailNotificatio
     .sections {
       grid-template-columns: 1fr;
     }
+  }
+  .muted {
+    color: var(--muted);
+    margin: 0;
+  }
+  .owner {
+    margin-top: 20px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+  }
+  .owner summary {
+    min-height: var(--tap);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  .owner p {
+    margin: 0 0 12px;
   }
   .check {
     display: flex;

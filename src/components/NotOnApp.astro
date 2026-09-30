@@ -1,0 +1,53 @@
+---
+// Shown by /offer and /message when the listing can't take offers or
+// messages: a sample listing on the Lot (not in the app), a car that has left
+// the Lot, or no listing given at all. Signed-in and signed-out visitors
+// alike, so nobody is asked to sign up for a dead end.
+import { siteUrl } from "../lib/paths";
+
+interface Props {
+  reason: "sample" | "gone" | "missing";
+  /** Only a slug that passed the slug check, for the "Back to the car" link. */
+  slug?: string | null;
+  action: "offer" | "message";
+}
+const { reason, slug, action } = Astro.props;
+const title =
+  reason === "sample"
+    ? "This is a sample listing"
+    : reason === "gone"
+      ? "This car is no longer on the Lot"
+      : "Pick a car on the Lot first";
+const text =
+  reason === "sample"
+    ? "This is a sample listing, so offers and messages are switched off. Real listings from sellers take offers and messages."
+    : reason === "gone"
+      ? "The seller or our team took this car off the Lot, so it no longer takes offers or messages."
+      : `Open a car on the Lot, then use ${action === "offer" ? "Make an offer" : "Message the seller"} on its page.`;
+---
+
+<div class="not-open card">
+  <p class="eyebrow">{action === "offer" ? "Make an offer" : "Message the seller"}</p>
+  <h1 class="page-title">{title}</h1>
+  <p class="lede">{text}</p>
+  <p class="not-open__actions">
+    <a class="btn" href={siteUrl("/")}>Back to the Lot</a>
+    {slug && reason === "sample" && <a class="btn btn--secondary" href={siteUrl(`/listings/${slug}`)}>Back to the car</a>}
+  </p>
+</div>
+
+<style>
+  .not-open {
+    max-width: 640px;
+    margin: 24px 0;
+  }
+  .not-open .page-title {
+    margin-top: 0;
+  }
+  .not-open__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 18px 0 0;
+  }
+</style>

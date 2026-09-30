@@ -1,5 +1,5 @@
 ---
-import { and, count, eq } from "drizzle-orm";
+import { and, count, eq, isNull, lt, or } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import Base from "../../../layouts/Base.astro";
 import Field from "../../../components/Field.astro";
@@ -19,11 +19,15 @@ import {
   US_STATES,
   MIN_DESCRIPTION,
 } from "../../../lib/listing-options";
+import { STATUS_LABELS } from "../../../lib/listing-options";
 import { checklist, listingTitle, parseStep, type ListingField } from "../../../lib/listing-rules";
 import { getPhotos, photoView } from "../../../lib/listings";
-import { publishListing, syncListing } from "../../../lib/cms";
+import { publishListing, resyncListing, scheduleCmsRetry, syncListing, type PublishResult } from "../../../lib/cms";
+import { NOT_CONFIGURED_MESSAGE, webflowConfigured } from "../../../lib/webflow";
+import { takeDownListing } from "../../../lib/take-down";
 import { audit, auditFor } from "../../../lib/audit";
-import { notifySellerChanges, notifySellerLive, notifySellerRejected } from "../../../lib/notify";
+import { notifySellerChanges, notifySellerRejected } from "../../../lib/notify";
+import { emailConfigured } from "../../../lib/config";
 
 const admin = Astro.locals.user!;
 if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
@@ -37,9 +41,27 @@ if (!listing || listing.status === "draft") return Astro.rewrite(url("/404"));
 
 const IN_CMS = ["live", "offer_accepted", "sold"];
 const selfUrl = url(`/admin/listings/${id}`);
+const cmsConfigured = webflowConfigured();
+
+// An approved listing that is not in the CMS yet (and not mid publish) can
+// still be sent back, rejected or moved back to review.
+const PUBLISH_LEASE_MS = 2 * 60_000;
+const notPublishing = () =>
+  and(
+    eq(listings.status, "approved"),
+    isNull(listings.cmsItemId),
+    or(isNull(listings.publishingAt), lt(listings.publishingAt, new Date(Date.now() - PUBLISH_LEASE_MS))),
+  );
+const publishRedirect = (r: PublishResult) =>
+  Astro.redirect(
+    `${selfUrl}?${r.ok ? "published=1" : "busy" in r && r.busy ? "publishing=1" : "notConfigured" in r && r.notConfigured ? "queued=1" : "publish_failed=1"}`,
+    303,
+  );
 
 let errors: Partial<Record<ListingField, string>> = {};
 let notesError = "";
+// A save with field errors still keeps (and syncs) the valid fields.
+let partialSync: "synced" | "failed" | null = null;
 let actionError = "";
 let posted: Record<string, string> | null = null;
 
@@ -73,37 +95,54 @@ if (Astro.request.method === "POST") {
       await db.update(listings).set({ ...data, updatedAt: new Date() }).where(eq(listings.id, id));
       await audit(admin.id, "admin_edit", "listing", id, { fields: changed });
     }
-    if (Object.keys(errors).length === 0) {
-      let q = "saved=1";
-      if (changed.length && IN_CMS.includes(listing.status)) {
-        const r = await syncListing(id, admin.id);
-        q = r.ok ? "saved=1&synced=1" : "saved=1&sync_failed=1";
-      }
+    const valid = Object.keys(errors).length === 0;
+    // Sync even when nothing changed, so saving again fixes a site that is
+    // behind. With field errors, sync the valid changes that were saved, so
+    // the Lot never silently keeps old values.
+    if (listing.cmsItemId && IN_CMS.includes(listing.status) && (valid || changed.length > 0)) {
+      const r = await syncListing(id, admin.id);
+      partialSync = r.ok ? "synced" : "failed";
+    }
+    if (valid) {
+      const q = partialSync === "synced" ? "saved=1&synced=1" : partialSync === "failed" ? "saved=1&sync_failed=1" : "saved=1";
       return Astro.redirect(`${selfUrl}?${q}`, 303);
     }
-  } else if (intent === "approve" || intent === "retry") {
-    if (intent === "approve") {
-      const issues = checklist(listing, (await getPhotos(id)).length);
-      if (listing.status !== "submitted") actionError = "Only listings in review can be approved.";
-      else if (issues.length) actionError = "This listing does not pass the checklist yet. Fix it with Edit listing, or request changes.";
-      else {
-        await db
-          .update(listings)
-          .set({ status: "approved", reviewerId: admin.id, reviewedAt: new Date(), reviewNotes: notes || null, updatedAt: new Date() })
-          .where(and(eq(listings.id, id), eq(listings.status, "submitted")));
-        await audit(admin.id, "approve", "listing", id, notes ? { notes } : undefined);
+  } else if (intent === "approve") {
+    const issues = checklist(listing, (await getPhotos(id)).length);
+    if (listing.status !== "submitted") actionError = "Only listings in review can be approved.";
+    else if (issues.length) actionError = "This listing does not pass the checklist yet. Fix it with Edit listing, or request changes.";
+    else {
+      const won = await db
+        .update(listings)
+        .set({ status: "approved", reviewerId: admin.id, reviewedAt: new Date(), reviewNotes: notes || null, updatedAt: new Date() })
+        .where(and(eq(listings.id, id), eq(listings.status, "submitted")))
+        .returning({ id: listings.id })
+        .get();
+      // A double click: the first request decided it and is publishing.
+      if (!won) return Astro.redirect(selfUrl, 303);
+      await audit(admin.id, "approve", "listing", id, notes ? { notes } : undefined);
+      if (!cmsConfigured) {
+        await audit(admin.id, "cms_publish_deferred", "listing", id, { reason: "WEBFLOW_API_TOKEN is not set" });
+        return Astro.redirect(`${selfUrl}?queued=1`, 303);
       }
-    } else if (listing.status !== "approved") {
-      actionError = "Only approved listings can be retried.";
+      // publishListing emails the seller when it goes live.
+      return publishRedirect(await publishListing(id, admin.id));
     }
-
-    if (!actionError) {
-      const result = await publishListing(id, admin.id);
-      if (result.ok) {
-        await notifySellerLive(await sellerOf(listing), id, title, result.slug);
-        return Astro.redirect(`${selfUrl}?published=1`, 303);
-      }
-      return Astro.redirect(`${selfUrl}?publish_failed=1`, 303);
+  } else if (intent === "retry") {
+    if (listing.status !== "approved") actionError = "Only approved listings can be retried.";
+    else if (!cmsConfigured) actionError = NOT_CONFIGURED_MESSAGE;
+    else return publishRedirect(await publishListing(id, admin.id));
+  } else if (intent === "unapprove") {
+    const moved = await db
+      .update(listings)
+      .set({ status: "submitted", updatedAt: new Date() })
+      .where(and(eq(listings.id, id), notPublishing()))
+      .returning({ id: listings.id })
+      .get();
+    if (!moved) actionError = "Only approved listings that are not on the site yet can go back to review.";
+    else {
+      await audit(admin.id, "move_back_to_review", "listing", id);
+      return Astro.redirect(`${selfUrl}?reopened=1`, 303);
     }
   } else if (intent === "changes" || intent === "reject") {
     if (notes.length < 10) {
@@ -111,20 +150,33 @@ if (Astro.request.method === "POST") {
         intent === "changes"
           ? "Tell the seller what to change. They will see this note."
           : "Tell the seller why. They will see this note.";
-    } else if (listing.status !== "submitted") {
-      actionError = "Only listings in review can be sent back or rejected.";
     } else {
       const status = intent === "changes" ? "changes_requested" : "rejected";
-      await db
+      const decided = await db
         .update(listings)
-        .set({ status, reviewNotes: notes, reviewerId: admin.id, reviewedAt: new Date(), updatedAt: new Date() })
-        .where(and(eq(listings.id, id), eq(listings.status, "submitted")));
-      await audit(admin.id, intent === "changes" ? "request_changes" : "reject", "listing", id, { notes });
-      const seller = await sellerOf(listing);
-      if (intent === "changes") await notifySellerChanges(seller, id, title, notes);
-      else await notifySellerRejected(seller, id, title, notes);
-      return Astro.redirect(`${url("/admin")}?done=${intent}`, 303);
+        .set({ status, reviewNotes: notes, reviewerId: admin.id, reviewedAt: new Date(), publishingAt: null, updatedAt: new Date() })
+        .where(and(eq(listings.id, id), or(eq(listings.status, "submitted"), notPublishing())))
+        .returning({ id: listings.id })
+        .get();
+      if (!decided) actionError = "Only listings in review, or approved but not on the site yet, can be sent back or rejected.";
+      else {
+        await audit(admin.id, intent === "changes" ? "request_changes" : "reject", "listing", id, { notes });
+        const seller = await sellerOf(listing);
+        if (intent === "changes") await notifySellerChanges(seller, id, title, notes);
+        else await notifySellerRejected(seller, id, title, notes);
+        return Astro.redirect(`${url("/admin")}?done=${intent}`, 303);
+      }
     }
+  } else if (intent === "takedown") {
+    if (notes.length < 10) notesError = "Tell the seller why it was taken down. They will see this note.";
+    else {
+      const r = await takeDownListing(listing, admin.id, { by: "admin", note: notes });
+      if (r.ok) return Astro.redirect(`${selfUrl}?taken_down=${r.unpublished ? "1" : "pending"}`, 303);
+      actionError = r.error;
+    }
+  } else if (intent === "resync") {
+    const r = await resyncListing(id, admin.id);
+    return Astro.redirect(`${selfUrl}?${r.ok ? "synced_now=1" : "sync_failed=1"}`, 303);
   } else if (intent === "delete-photo") {
     const photo = await db
       .select()
@@ -135,11 +187,17 @@ if (Astro.request.method === "POST") {
       await db.delete(listingPhotos).where(eq(listingPhotos.id, photo.id));
       await env.PHOTOS.delete(photo.r2Key);
       await audit(admin.id, "delete_photo", "listing", id, { photoId: photo.id });
-      if (IN_CMS.includes(listing.status)) await syncListing(id, admin.id);
+      if (listing.cmsItemId && IN_CMS.includes(listing.status)) {
+        const r = await syncListing(id, admin.id);
+        if (!r.ok) return Astro.redirect(`${selfUrl}?sync_failed=1#photos`, 303);
+      }
     }
     return Astro.redirect(`${selfUrl}#photos`, 303);
   }
 }
+
+// Lazy retry of pending publishes and syncs (throttled, no cron), after the response.
+if (Astro.request.method === "GET") await scheduleCmsRetry();
 
 listing = (await load())!;
 const photos = await getPhotos(id);
@@ -150,11 +208,11 @@ const sellerListings = (
   await db.select({ n: count() }).from(listings).where(eq(listings.userId, listing.userId)).get()
 )?.n ?? 0;
 const history = await auditFor("listing", id, 30);
+// Only failures since this approval count.
 const lastPublishError =
   listing.status === "approved"
-    ? (history.find((h) => h.action === "cms_publish_failed")?.data as { error?: string } | null)?.error
+    ? (history.find((h) => h.action === "cms_publish_failed" && (!listing!.reviewedAt || h.createdAt >= listing!.reviewedAt))?.data as { error?: string } | null)?.error
     : null;
-const cmsConfigured = Boolean(env.WEBFLOW_API_TOKEN && env.WEBFLOW_COLLECTION_ID);
 
 const v = (field: ListingField | "sellerType"): string => {
   if (posted && posted.intent === "save" && field in posted) return posted[field];
@@ -164,7 +222,17 @@ const v = (field: ListingField | "sellerType"): string => {
 const on = (field: keyof Listing) =>
   posted && posted.intent === "save" ? posted[field] === "on" : Boolean(listing![field]);
 const params = Astro.url.searchParams;
-const canDecide = listing.status === "submitted";
+const publishingNow =
+  listing.publishingAt !== null && Date.now() - listing.publishingAt.getTime() < PUBLISH_LEASE_MS;
+const reopenable = listing.status === "approved" && !listing.cmsItemId && !publishingNow;
+const canDecide = listing.status === "submitted" || reopenable;
+const inCms = Boolean(listing.cmsItemId) && IN_CMS.includes(listing.status);
+const outOfSync = Boolean(listing.cmsItemId) && listing.cmsSyncPending;
+const lastSyncError = outOfSync
+  ? (history.find((h) => h.action === "cms_sync_failed" || h.action === "cms_unpublish_failed")?.data as { error?: string } | null)?.error
+  : null;
+// Stops a double click sending a form twice (the server guards too).
+const onceOnly = "return !this.dataset.sent && !!(this.dataset.sent = '1')";
 const title = listingTitle(listing);
 const fmtDate = (d: Date | null | undefined) =>
   d ? d.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/Los_Angeles" }) : "";
@@ -176,18 +244,53 @@ const fmtDate = (d: Date | null | undefined) =>
     <h1 class="page-title">{title}</h1>
     <StatusBadge status={listing.status} />
   </div>
+  {listing.deletedAt && (
+    <Notice tone="info"><p>The seller deleted this listing and its photos. It is kept because it has offers or messages.</p></Notice>
+  )}
 
   {params.get("published") && (
-    <Notice tone="ok"><p>Published. <a href={siteUrl(`/listings/${listing.slug}`)}>View it on the site</a>. The seller was emailed.</p></Notice>
+    <Notice tone="ok"><p>Published. <a href={siteUrl(`/listings/${listing.slug}`)}>View it on the site</a>.{" "}
+      {emailConfigured() ? "The seller was emailed." : "Email is not set up, so the seller was not emailed."}</p></Notice>
   )}
+  {params.get("queued") && (
+    <Notice tone="ok"><p>
+      Approved. It publishes the next time you open an admin page after WEBFLOW_API_TOKEN is added in the Webflow Cloud
+      settings.{" "}
+      {emailConfigured()
+        ? "The seller is emailed when it goes live."
+        : "Email is not set up, so the seller sees the change in My garage."}
+    </p></Notice>
+  )}
+  {params.get("publishing") && <Notice tone="info"><p>Publishing is already in progress. Refresh in a moment.</p></Notice>}
   {params.get("publish_failed") && (
-    <Notice tone="error"><p>Approved, but publishing to Webflow failed. The error is below. Fix it and retry.</p></Notice>
+    <Notice tone="error"><p>Approved, but publishing to Webflow failed. The error is below. It is retried about once a minute while you use the admin pages, or use Retry publish. You can also move it back to review.</p></Notice>
   )}
+  {params.get("reopened") && <Notice tone="ok"><p>Moved back to review.</p></Notice>}
+  {params.get("taken_down") && (
+    <Notice tone={params.get("taken_down") === "pending" ? "error" : "ok"}><p>
+      {params.get("taken_down") === "pending"
+        ? "Taken down here and open offers were closed, but removing it from the site failed. It is retried while you use the admin pages, or use the button below."
+        : "Taken down. It is off the site and open offers were closed."}{" "}
+      {emailConfigured()
+        ? "The seller was emailed your note."
+        : "Email is not set up, so the seller sees your note on their listing page."}
+    </p></Notice>
+  )}
+  {params.get("synced_now") && <Notice tone="ok"><p>The site is up to date.</p></Notice>}
   {params.get("saved") && <Notice tone="ok"><p>Changes saved{params.get("synced") ? " and synced to the site" : ""}.</p></Notice>}
-  {params.get("sync_failed") && <Notice tone="error"><p>Saved here, but the Webflow update failed. See the history below.</p></Notice>}
+  {params.get("sync_failed") && <Notice tone="error"><p>Saved here, but the Webflow update failed. See the error in the Decision box.</p></Notice>}
   {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
-  {Object.keys(errors).length > 0 && <Notice tone="error"><p>Some fields need fixing. Everything else was saved.</p></Notice>}
-  {!cmsConfigured && <Notice tone="error"><p>WEBFLOW_API_TOKEN or WEBFLOW_COLLECTION_ID is not set, so publishing will fail.</p></Notice>}
+  {Object.keys(errors).length > 0 && (
+    <Notice tone="error"><p>
+      Some fields need fixing.{" "}
+      {partialSync === "synced"
+        ? "Everything else was saved and synced to the site."
+        : partialSync === "failed"
+          ? "Everything else was saved here, but the Webflow update failed. See the error in the Decision box."
+          : "Everything else was saved."}
+    </p></Notice>
+  )}
+  {!cmsConfigured && <Notice tone="info"><p>{NOT_CONFIGURED_MESSAGE}</p></Notice>}
 
   <div class="layout">
     <div class="main">
@@ -267,7 +370,7 @@ const fmtDate = (d: Date | null | undefined) =>
           <div class="field-row field-row--3">
             <Field name="ownerCount" label="Owners" inputmode="numeric" value={v("ownerCount")} error={errors.ownerCount} required={false} />
             <Select name="titleStatus" label="Title status" options={TITLE_STATUSES} value={v("titleStatus")} error={errors.titleStatus} />
-            <Select name="titleState" label="Title state" options={US_STATES} value={v("titleState")} error={errors.titleState} placeholder="State" />
+            <Select name="titleState" label="Title state" options={US_STATES} value={v("titleState")} error={errors.titleState} placeholder="State" hint="Leave blank if there is no title." />
           </div>
           <Field name="videoUrl" label="Video link" type="url" value={v("videoUrl")} error={errors.videoUrl} maxlength={300} required={false} />
           <div class="field-row field-row--3">
@@ -294,35 +397,79 @@ const fmtDate = (d: Date | null | undefined) =>
         <h2 id="decide-h">Decision</h2>
         {
           listing.status === "approved" && (
-            <>
-              <Notice tone="error">
-                <p><strong>Publishing failed.</strong></p>
-                {lastPublishError && <p class="err">{lastPublishError}</p>}
-              </Notice>
-              <form method="post">
-                <input type="hidden" name="intent" value="retry" />
-                <button class="btn" type="submit">Retry publish</button>
+            cmsConfigured ? (
+              <>
+                {publishingNow ? (
+                  <Notice tone="info"><p><strong>Publishing now.</strong> Refresh in a moment.</p></Notice>
+                ) : lastPublishError ? (
+                  <Notice tone="error">
+                    <p><strong>Publishing failed.</strong> It is retried about once a minute while you use the admin pages.</p>
+                    <p class="err">{lastPublishError}</p>
+                  </Notice>
+                ) : (
+                  <Notice tone="info"><p><strong>Waiting to publish.</strong> It publishes the next time you open an admin page, or use Publish now.</p></Notice>
+                )}
+                <form method="post" onsubmit={onceOnly}>
+                  <input type="hidden" name="intent" value="retry" />
+                  <button class="btn" type="submit">{lastPublishError ? "Retry publish" : "Publish now"}</button>
+                </form>
+              </>
+            ) : (
+              <Notice tone="info"><p><strong>Approved, waiting for Webflow.</strong> It publishes the next time you open an admin page after WEBFLOW_API_TOKEN is set.</p></Notice>
+            )
+          )
+        }
+        {
+          reopenable && (
+            <form method="post" onsubmit={onceOnly}>
+              <input type="hidden" name="intent" value="unapprove" />
+              <button class="btn btn--secondary block" type="submit">Move back to review</button>
+            </form>
+          )
+        }
+        {
+          outOfSync && (
+            <Notice tone="error">
+              <p><strong>{inCms ? "The site is not up to date." : "It may still be on the site."}</strong> This is retried about once a minute while you use the admin pages.</p>
+              {lastSyncError && <p class="err">{lastSyncError}</p>}
+              <form method="post" onsubmit={onceOnly}>
+                <input type="hidden" name="intent" value="resync" />
+                <button class="btn btn--secondary" type="submit">{inCms ? "Sync to site now" : "Retry removing from the site"}</button>
               </form>
-            </>
+            </Notice>
           )
         }
         {
           canDecide ? (
-            <form method="post" novalidate>
+            <form method="post" novalidate onsubmit={onceOnly}>
               <div class="field">
                 <label for="f-notes">Note to the seller</label>
-                <span class="hint">Required for changes and rejections. The seller sees it exactly as written.</span>
+                <span class="hint">Required for changes and rejections, and sent to the seller exactly as written. Optional when approving (only admins see it).</span>
                 <textarea id="f-notes" name="notes" rows="6" maxlength="4000" aria-invalid={notesError ? "true" : undefined}>{posted?.notes ?? ""}</textarea>
                 {notesError && <span class="error">{notesError}</span>}
               </div>
               <div class="buttons">
-                <button class="btn" type="submit" name="intent" value="approve" disabled={issues.length > 0}>Approve and publish</button>
+                {listing.status === "submitted" && (
+                  <button class="btn" type="submit" name="intent" value="approve" disabled={issues.length > 0}>
+                    {cmsConfigured ? "Approve and publish" : "Approve (goes live when Webflow is connected)"}
+                  </button>
+                )}
                 <button class="btn btn--secondary" type="submit" name="intent" value="changes">Request changes</button>
                 <button class="btn btn--secondary reject" type="submit" name="intent" value="reject">Reject</button>
               </div>
             </form>
+          ) : inCms ? (
+            <form method="post" novalidate onsubmit="return !this.dataset.sent && confirm('Take this listing off the site? Open offers will be closed and the seller will see your note.') && !!(this.dataset.sent = '1')">
+              <div class="field">
+                <label for="f-takedown">Take down this listing</label>
+                <span class="hint">For scams, fakes or broken rules. The seller sees your note exactly as written, and open offers are closed.</span>
+                <textarea id="f-takedown" name="notes" rows="4" maxlength="4000" aria-invalid={notesError ? "true" : undefined}>{posted?.intent === "takedown" ? posted.notes : ""}</textarea>
+                {notesError && <span class="error">{notesError}</span>}
+              </div>
+              <button class="btn btn--secondary reject block" type="submit" name="intent" value="takedown">Take down</button>
+            </form>
           ) : (
-            listing.status !== "approved" && <p class="muted">No decision needed. This listing is {listing.status.replace("_", " ")}.</p>
+            listing.status !== "approved" && <p class="muted">No decision needed. This listing is {STATUS_LABELS[listing.status]?.toLowerCase() ?? listing.status}.</p>
           )
         }
         {listing.slug && IN_CMS.includes(listing.status) && (
@@ -338,6 +485,8 @@ const fmtDate = (d: Date | null | undefined) =>
         <div class="spec-row"><span>Verified</span><span>{seller?.emailVerified ? "Yes" : "No"}</span></div>
         <div class="spec-row"><span>Joined</span><span>{fmtDate(seller?.createdAt)}</span></div>
         <div class="spec-row"><span>Listings</span><span>{sellerListings}</span></div>
+        {sellerProfile?.suspendedAt && <div class="spec-row"><span>Account</span><span>Suspended</span></div>}
+        {seller && <p><a href={`${url("/admin/users")}?q=${encodeURIComponent(seller.email)}`}>Manage this account</a></p>}
       </section>
 
       <section class="card" aria-labelledby="hist-h">
@@ -382,9 +531,13 @@ const fmtDate = (d: Date | null | undefined) =>
       grid-template-columns: minmax(0, 1fr) 360px;
       align-items: start;
     }
+    /* Below the sticky header, and scrollable on its own when taller than the screen. */
     .side {
       position: sticky;
-      top: 16px;
+      top: calc(var(--header-h) + 16px);
+      max-height: calc(100vh - var(--header-h) - 32px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
     }
   }
   .main,
@@ -484,6 +637,12 @@ const fmtDate = (d: Date | null | undefined) =>
   .buttons {
     display: grid;
     gap: 10px;
+  }
+  .block {
+    width: 100%;
+  }
+  .decide form {
+    margin: 0;
   }
   .reject {
     color: var(--red);

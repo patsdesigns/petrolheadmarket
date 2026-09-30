@@ -11,6 +11,7 @@ import "../../../styles/uploader.css";
 import { getDb } from "../../../db/client";
 import { listings } from "../../../db/schema";
 import { url } from "../../../lib/paths";
+import { canTransact, emailConfigured } from "../../../lib/config";
 import {
   BODY_STYLES,
   DRIVETRAINS,
@@ -30,6 +31,7 @@ import {
   formatPrice,
   listingTitle,
   parseStep,
+  titleText,
   type ListingField,
   type StepKey,
 } from "../../../lib/listing-rules";
@@ -40,9 +42,20 @@ const user = Astro.locals.user!;
 const profile = Astro.locals.profile!;
 const id = Astro.params.id!;
 
+// Autosave is a fetch from the wizard, so it gets JSON, never a redirect
+// (a followed redirect would look like a successful save).
+const isAutosave = Astro.request.method === "POST" && Astro.request.headers.get("x-autosave") === "1";
+const autosaveReply = (body: Record<string, unknown>, status = 200) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
+  });
+
 let listing = await getOwnListing(user.id, id);
-if (!listing) return Astro.rewrite(url("/404"));
-if (!isEditable(listing)) return Astro.redirect(url(`/listings/${id}`), 303);
+if (!listing) return isAutosave ? autosaveReply({ ok: false, reason: "not_found" }, 404) : Astro.rewrite(url("/404"));
+if (!isEditable(listing)) {
+  return isAutosave ? autosaveReply({ ok: false, reason: "not_editable" }, 409) : Astro.redirect(url(`/listings/${id}`), 303);
+}
 
 const stepParam = Astro.url.searchParams.get("step") as StepKey | null;
 const stepIndex = Math.max(0, STEPS.findIndex((s) => s.key === stepParam));
@@ -59,23 +72,25 @@ if (Astro.request.method === "POST") {
   for (const [k, v] of form.entries()) if (typeof v === "string") posted[k] = v;
   const postedStep = (posted.step as StepKey) ?? step.key;
   const nav = posted.nav ?? "next";
-  const isAutosave = Astro.request.headers.get("x-autosave") === "1";
 
   if (postedStep !== "photos" && postedStep !== "review") {
     const result = parseStep(postedStep, posted);
     errors = result.errors;
-    await saveListingFields(id, user.id, result.data);
+    // False when the listing left draft meanwhile (submitted from another tab).
+    const saved = await saveListingFields(id, user.id, result.data);
     if (isAutosave) {
-      return new Response(JSON.stringify({ ok: true, errors }), {
-        headers: { "Content-Type": "application/json", "Cache-Control": "no-store" },
-      });
+      // ok: the valid fields were stored. errors: the fields that were not.
+      return saved ? autosaveReply({ ok: true, errors }) : autosaveReply({ ok: false, reason: "not_editable" }, 409);
     }
+    if (!saved) return Astro.redirect(url(`/listings/${id}`), 303);
+  } else if (isAutosave) {
+    return autosaveReply({ ok: true, errors: {} });
   }
 
   if (postedStep === "review" && nav === "submit") {
     listing = (await getOwnListing(user.id, id))!;
     const issues = checklist(listing, (await getPhotos(id)).length);
-    if (!user.emailVerified) {
+    if (!canTransact(user)) {
       submitError = "Confirm your email before you submit your listing.";
     } else if (issues.length) {
       submitError = "Finish the items below, then submit again.";
@@ -92,7 +107,9 @@ if (Astro.request.method === "POST") {
       }
       submitError = "This listing can't be submitted right now.";
     }
-  } else if (Object.keys(errors).length === 0 || nav === "back") {
+  } else if (Object.keys(errors).length === 0) {
+    // With errors (even on Back) the step shows again with the posted values,
+    // so nothing the seller typed is dropped without a word.
     const target =
       nav === "back" ? STEPS[Math.max(0, stepIndex - 1)] : nav === "save" ? step : STEPS[Math.min(STEPS.length - 1, stepIndex + 1)];
     return Astro.redirect(nav === "save" ? `${stepUrl(target.key)}&saved=1` : stepUrl(target.key), 303);
@@ -114,6 +131,7 @@ const v = (field: ListingField): string => {
 const checked = (field: ListingField) => (posted && posted.step === step.key ? posted[field] === "on" : Boolean(listing![field as keyof typeof listing]));
 const title = listingTitle(listing);
 const isChanges = listing.status === "changes_requested";
+const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))}`;
 ---
 
 <Base title={`${step.title} | ${title}`}>
@@ -156,7 +174,7 @@ const isChanges = listing.status === "changes_requested";
 
     {
       step.key === "car" && (
-        <form method="post" data-autosave novalidate>
+        <form method="post" data-autosave data-login={loginHref} novalidate>
           <input type="hidden" name="step" value="car" />
           <div class="field-row field-row--3">
             <Field name="year" label="Year" inputmode="numeric" value={v("year")} error={errors.year} maxlength={4} required={false} />
@@ -191,7 +209,7 @@ const isChanges = listing.status === "changes_requested";
 
     {
       step.key === "history" && (
-        <form method="post" data-autosave novalidate>
+        <form method="post" data-autosave data-login={loginHref} novalidate>
           <input type="hidden" name="step" value="history" />
           <TextArea name="description" label="Description" value={v("description")} error={errors.description} maxlength={8000} rows={10} counter={MIN_DESCRIPTION}
             hint="Tell the car's story. How long you have owned it, how it drives, what has been done, and why you are selling." />
@@ -206,7 +224,7 @@ const isChanges = listing.status === "changes_requested";
           <div class="field-row field-row--3">
             <Field name="ownerCount" label="Number of owners" inputmode="numeric" value={v("ownerCount")} error={errors.ownerCount} maxlength={2} required={false} hint="Including you" />
             <Select name="titleStatus" label="Title status" options={TITLE_STATUSES} value={v("titleStatus")} error={errors.titleStatus} />
-            <Select name="titleState" label="Title state" options={US_STATES} value={v("titleState")} error={errors.titleState} placeholder="State" />
+            <Select name="titleState" label="Title state" options={US_STATES} value={v("titleState")} error={errors.titleState} placeholder="State" hint="Leave blank if there is no title." />
           </div>
           <Check name="recordsOnFile" label="I have service records for this car" checked={checked("recordsOnFile")}
             hint="Our reviewer may ask to see them." />
@@ -245,7 +263,7 @@ const isChanges = listing.status === "changes_requested";
 
     {
       step.key === "price" && (
-        <form method="post" data-autosave novalidate>
+        <form method="post" data-autosave data-login={loginHref} novalidate>
           <input type="hidden" name="step" value="price" />
           <Field name="price" label="Asking price" inputmode="numeric" value={v("price")} error={errors.price} maxlength={12} required={false}
             hint="Whole dollars. Check recent sales of similar cars." />
@@ -283,7 +301,7 @@ const isChanges = listing.status === "changes_requested";
       step.key === "review" && (
         <>
           {submitError && <Notice tone="error"><p>{submitError}</p></Notice>}
-          {!user.emailVerified && (
+          {!canTransact(user) && (
             <Notice tone="info">
               <p>You need to <a href={`${url("/verify-email")}?next=${encodeURIComponent(stepUrl("review"))}`}>confirm your email</a> before you submit.</p>
             </Notice>
@@ -320,7 +338,7 @@ const isChanges = listing.status === "changes_requested";
             <div class="spec-row"><span>Body</span><span>{optionLabel(BODY_STYLES, listing.bodyStyle) || "Not set"}</span></div>
             <div class="spec-row"><span>Engine</span><span>{listing.engine || "Not set"}</span></div>
             <div class="spec-row"><span>VIN</span><span class="mono-v">{listing.vin || "Not set"}</span></div>
-            <div class="spec-row"><span>Title</span><span>{[optionLabel(TITLE_STATUSES, listing.titleStatus), listing.titleState].filter(Boolean).join(", ") || "Not set"}</span></div>
+            <div class="spec-row"><span>Title</span><span>{titleText(optionLabel(TITLE_STATUSES, listing.titleStatus), listing) || "Not set"}</span></div>
             <div class="spec-row"><span>Location</span><span>{[listing.locationCity, listing.locationState].filter(Boolean).join(", ") || "Not set"}</span></div>
             <div class="spec-row"><span>Offers</span><span>{listing.acceptsOffers ? "Accepted" : "Not accepted"}</span></div>
             <div class="spec-row"><span>Contact</span><span>{listing.contactMethod === "messages_phone" ? `Messages and phone, ${listing.contactPhone ?? "no number"}` : "Messages only"}</span></div>
@@ -330,11 +348,14 @@ const isChanges = listing.status === "changes_requested";
           <form method="post" class="wizard__nav">
             <input type="hidden" name="step" value="review" />
             <a class="btn btn--secondary nav-back" href={stepUrl("price")}>Back</a>
-            <button class="btn nav-next" type="submit" name="nav" value="submit" disabled={issues.length > 0 || !user.emailVerified}>
+            <button class="btn nav-next" type="submit" name="nav" value="submit" disabled={issues.length > 0 || !canTransact(user)}>
               Submit for review
             </button>
           </form>
-          <p class="muted small">A person reviews every listing, usually within a day. We will email you when it is live or if anything needs changing.</p>
+          <p class="muted small">
+            A person reviews every listing, usually within a day.
+            {emailConfigured() ? "We will email you when it is live or if anything needs changing." : "Check My garage for updates."}
+          </p>
         </>
       )
     }
@@ -376,7 +397,7 @@ const isChanges = listing.status === "changes_requested";
       {step.key === "review" && (
         <ol>
           <li>A person reviews your listing, usually within a day.</li>
-          <li>If anything needs changing, we email you a note.</li>
+          <li>If anything needs changing, {emailConfigured() ? "we email you a note" : "you see a note in My garage"}.</li>
           <li>Once approved it goes live and buyers can message you or make offers.</li>
         </ol>
       )}
@@ -392,49 +413,175 @@ const isChanges = listing.status === "changes_requested";
         {issues.length > 8 && <p class="muted small">And {issues.length - 8} more.</p>}
       </section>
     )}
+    {listing.status === "draft" && (
+      <form method="post" action={url(`/listings/${id}`)} class="danger"
+        onsubmit="return confirm('Delete this draft and its photos? This cannot be undone.')">
+        <input type="hidden" name="intent" value="delete" />
+        <button class="linkish" type="submit">Delete this draft</button>
+      </form>
+    )}
   </aside>
   </div>
 </Base>
 
 <script>
-  // Autosave: save the current step a moment after the seller stops typing.
+  // Autosave: save the current step a moment after the seller stops typing,
+  // before following a link, and when the page is hidden or closed. It only
+  // says "Draft saved" when the server confirmed it.
   const form = document.querySelector<HTMLFormElement>("form[data-autosave]");
   const status = form?.querySelector<HTMLElement>("[data-autosave-status]");
   let timer: number | undefined;
   let dirty = false;
+  // After a failed save, a second click on a link leaves without saving.
+  let letGo = false;
 
-  async function save() {
-    if (!form || !dirty) return;
+  type Result = "saved" | "partial" | "failed";
+
+  function say(text: string, link?: { href: string; label: string }) {
+    if (!status) return;
+    status.textContent = text;
+    if (link) {
+      const a = document.createElement("a");
+      a.href = link.href;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = link.label;
+      status.appendChild(document.createTextNode(" "));
+      status.appendChild(a);
+    }
+  }
+
+  function fieldLabel(name: string): string {
+    const el = document.getElementById(`f-${name}`);
+    const label = el && document.querySelector<HTMLLabelElement>(`label[for="f-${name}"]`);
+    return label?.textContent?.trim() || name;
+  }
+
+  /** Show (or clear) the error under each field of this step. */
+  function markFields(errors: Record<string, string>) {
+    if (!form) return;
+    form.querySelectorAll<HTMLElement>("[id^='f-']").forEach((el) => {
+      if (!(el instanceof HTMLInputElement || el instanceof HTMLSelectElement || el instanceof HTMLTextAreaElement)) return;
+      const message = errors[el.name];
+      const errId = `${el.id}-error`;
+      let err = document.getElementById(errId);
+      const described = (el.getAttribute("aria-describedby") ?? "").split(" ").filter((d) => d && d !== errId);
+      if (message) {
+        if (!err) {
+          err = document.createElement("span");
+          err.className = "error";
+          err.id = errId;
+          el.closest(".field")?.appendChild(err);
+        }
+        err.textContent = message;
+        el.setAttribute("aria-invalid", "true");
+        described.push(errId);
+      } else {
+        err?.remove();
+        el.removeAttribute("aria-invalid");
+      }
+      if (described.length) el.setAttribute("aria-describedby", described.join(" "));
+      else el.removeAttribute("aria-describedby");
+    });
+  }
+
+  function send(keepalive: boolean) {
+    return fetch(form!.action || location.href, {
+      method: "POST",
+      body: new FormData(form!),
+      headers: { "X-Autosave": "1" },
+      credentials: "same-origin",
+      redirect: "manual",
+      keepalive,
+    });
+  }
+
+  async function save(): Promise<Result> {
+    window.clearTimeout(timer);
+    if (!form || !dirty) return "saved";
     dirty = false;
-    if (status) status.textContent = "Saving…";
+    say("Saving…");
     try {
-      const res = await fetch(form.action || location.href, {
-        method: "POST",
-        body: new FormData(form),
-        headers: { "X-Autosave": "1" },
-      });
-      if (!res.ok) throw new Error();
-      if (status) status.textContent = "Draft saved";
+      const res = await send(false);
+      type Reply = { ok?: boolean; reason?: string; errors?: Record<string, string> };
+      const json = (res.headers.get("content-type") ?? "").includes("application/json") ? ((await res.json()) as Reply) : null;
+      if (res.status === 401 || res.type === "opaqueredirect") {
+        dirty = true;
+        say("Not saved. You were signed out.", { href: form.dataset.login ?? location.href, label: "Sign in again" });
+        return "failed";
+      }
+      if (res.status === 403 && json?.reason === "suspended") {
+        dirty = true;
+        say("Not saved. Your account is suspended.");
+        return "failed";
+      }
+      if (res.status === 409 || res.status === 404) {
+        dirty = true;
+        say("Not saved. This listing can no longer be edited here. Reload the page to see why.");
+        return "failed";
+      }
+      if (!res.ok || !json?.ok) throw new Error(String(res.status));
+      const errors: Record<string, string> = json.errors ?? {};
+      markFields(errors);
+      const bad = Object.keys(errors);
+      if (bad.length) {
+        say(`Saved, except ${bad.map(fieldLabel).join(", ")}. Check ${bad.length === 1 ? "that field" : "those fields"}.`);
+        return "partial";
+      }
+      say("Draft saved");
+      return "saved";
     } catch {
       dirty = true;
-      if (status) status.textContent = "Not saved. Check your connection.";
+      say("Not saved. Check your connection.");
+      return "failed";
     }
+  }
+
+  /** The page is going away: send what is left without waiting (keepalive survives the unload). */
+  function flush() {
+    window.clearTimeout(timer);
+    if (!form || !dirty) return;
+    dirty = false;
+    send(true).catch(() => {});
   }
 
   form?.addEventListener("input", () => {
     dirty = true;
+    letGo = false;
     window.clearTimeout(timer);
     timer = window.setTimeout(save, 1200);
   });
   form?.addEventListener("change", () => {
     dirty = true;
+    letGo = false;
     window.clearTimeout(timer);
     timer = window.setTimeout(save, 400);
   });
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "hidden") save();
+    if (document.visibilityState === "hidden") flush();
   });
-  form?.addEventListener("submit", () => window.clearTimeout(timer));
+  window.addEventListener("pagehide", flush);
+  form?.addEventListener("submit", () => {
+    window.clearTimeout(timer);
+    dirty = false;
+  });
+
+  // Links (steps, still to do, My garage, the header): save first, then go.
+  // If the save fails or some fields were not saved, stay so the seller sees why.
+  document.addEventListener(
+    "click",
+    async (e) => {
+      if (!form || !dirty || letGo) return;
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = (e.target as Element | null)?.closest?.("a[href]") as HTMLAnchorElement | null;
+      if (!link || link.target || link.hasAttribute("download") || link.closest("[data-autosave-status]")) return;
+      e.preventDefault();
+      const result = await save();
+      if (result === "saved") location.href = link.href;
+      else letGo = true;
+    },
+    true,
+  );
 
   // Live character count for fields with a minimum (description).
   document.querySelectorAll<HTMLElement>("[data-counter-for]").forEach((el) => {
@@ -460,7 +607,7 @@ const isChanges = listing.status === "changes_requested";
   }
   .steps {
     position: sticky;
-    top: 20px;
+    top: calc(var(--header-h) + 20px);
   }
   .steps ol {
     list-style: none;
@@ -532,7 +679,9 @@ const isChanges = listing.status === "changes_requested";
     display: grid;
     gap: 16px;
     position: sticky;
-    top: 20px;
+    top: calc(var(--header-h) + 20px);
+    max-height: calc(100vh - var(--header-h) - 40px);
+    overflow-y: auto;
   }
   .help ul,
   .help ol {
@@ -550,6 +699,20 @@ const isChanges = listing.status === "changes_requested";
   .todo-list .is-here a {
     font-weight: 700;
   }
+  .danger {
+    text-align: center;
+  }
+  .linkish {
+    border: 0;
+    background: none;
+    color: var(--red);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    min-height: var(--tap);
+    cursor: pointer;
+    padding: 0;
+  }
 
   /* Smaller laptops: tips move under the form. */
   @media (max-width: 1180px) {
@@ -559,6 +722,8 @@ const isChanges = listing.status === "changes_requested";
     .wiz__help {
       grid-column: 2;
       position: static;
+      max-height: none;
+      overflow: visible;
       grid-template-columns: 1fr 1fr;
     }
   }

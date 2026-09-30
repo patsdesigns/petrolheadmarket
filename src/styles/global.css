@@ -18,6 +18,9 @@
   --radius-tile: 10px;
   --radius-btn: 8px;
   --tap: 44px;
+  /* Height of the sticky site header (dark bar plus promise strip). Sticky
+     side columns sit below it: top: calc(var(--header-h) + 20px). */
+  --header-h: 100px;
   --gutter: 20px;
   --max: 1180px;
   --line-dark: #3a3e45;
@@ -629,7 +632,7 @@ legend {
 }
 .with-side > aside {
   position: sticky;
-  top: 120px;
+  top: calc(var(--header-h) + 20px);
   display: grid;
   gap: 14px;
 }

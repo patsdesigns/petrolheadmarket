@@ -1,4 +1,4 @@
-import { and, desc, eq, lt, ne, or } from "drizzle-orm";
+import { and, desc, eq, gt, lt, ne, or } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { listings, offers, profiles, user as users, type Listing, type Offer } from "../db/schema";
 import { audit } from "./audit";
@@ -7,6 +7,8 @@ import { absoluteUrl } from "./config";
 import { sendEmail } from "./email";
 import { formatPrice, listingTitle } from "./listing-rules";
 import { url } from "./paths";
+import { isSuspended } from "./profile";
+import { scamCheck } from "./messaging";
 
 export const OFFER_HOURS = 72;
 export const MIN_OFFER_RATIO = 0.5;
@@ -44,12 +46,29 @@ async function person(userId: string) {
   };
 }
 
+/** "your $20,000 offer", or "the seller's $25,000 counter offer" for a counter, as the buyer reads it. */
+export function offerPhrase(o: { madeBy: string; amount: number }): string {
+  return o.madeBy === "seller" ? `the seller's ${formatPrice(o.amount)} counter offer` : `your ${formatPrice(o.amount)} offer`;
+}
+
+/**
+ * The note as it goes in an email. A note the scam filter flagged is left
+ * out, so an off-platform pitch doesn't reach an inbox before review.
+ */
+function noteLines(message: string | null, flagged: boolean): string[] {
+  if (!message) return [];
+  if (flagged) return ["They added a note. Read it on Petrol Head Market."];
+  return [`Their note: "${message}"`];
+}
+
 function notifyIfWanted(p: { email: string; notify: boolean }, email: Parameters<typeof sendEmail>[0]) {
   if (!p.notify) return Promise.resolve();
   return sendEmail(email).catch((err) => console.error("[offers] email failed", err));
 }
 
-export type OfferResult = { ok: true; offer?: Offer } | { ok: false; error: string };
+export type OfferResult =
+  | { ok: true; offer?: Offer; syncFailed?: { listingId: string; bySeller: boolean } }
+  | { ok: false; error: string };
 
 export async function createOffer(
   listing: Listing,
@@ -58,6 +77,7 @@ export async function createOffer(
   message: string | null,
 ): Promise<OfferResult> {
   if (listing.status !== "live") return { ok: false, error: "This car is no longer taking offers." };
+  if (await isSuspended(buyerId)) return { ok: false, error: "Your account is suspended." };
   if (!listing.acceptsOffers) return { ok: false, error: "The seller is not taking offers on this car." };
   if (listing.userId === buyerId) return { ok: false, error: "You can't make an offer on your own car." };
   if (!listing.price) return { ok: false, error: "This listing has no price." };
@@ -74,9 +94,21 @@ export async function createOffer(
     return { ok: false, error: "You already have an open offer on this car. Wait for the seller to respond, or withdraw it first." };
   }
 
+  // Notes are delivered like messages, and flagged for review the same way.
+  const flagReason = message ? scamCheck(message) : null;
   const offer = await getDb()
     .insert(offers)
-    .values({ id: crypto.randomUUID(), listingId: listing.id, buyerId, madeBy: "buyer", amount, message, expiresAt: expiry() })
+    .values({
+      id: crypto.randomUUID(),
+      listingId: listing.id,
+      buyerId,
+      madeBy: "buyer",
+      amount,
+      message,
+      flagged: Boolean(flagReason),
+      flagReason,
+      expiresAt: expiry(),
+    })
     .returning()
     .get();
 
@@ -87,7 +119,7 @@ export async function createOffer(
     subject: `New offer on your ${title}: ${formatPrice(amount)}`,
     paragraphs: [
       `${buyer.displayName} offered ${formatPrice(amount)} for your ${title} (asking ${formatPrice(listing.price)}).`,
-      ...(message ? [`Their note: "${message}"`] : []),
+      ...noteLines(message, Boolean(flagReason)),
       `You have ${OFFER_HOURS} hours to accept, counter or decline.`,
     ],
     action: { label: "Respond to the offer", url: absoluteUrl(url("/offers")) },
@@ -140,6 +172,7 @@ export async function counterOffer(offerId: string, sellerId: string, amount: nu
     .get();
   if (!updated) return { ok: false, error: "This offer is no longer open." };
 
+  const flagReason = message ? scamCheck(message) : null;
   const counter = await db
     .insert(offers)
     .values({
@@ -149,6 +182,8 @@ export async function counterOffer(offerId: string, sellerId: string, amount: nu
       madeBy: "seller",
       amount,
       message,
+      flagged: Boolean(flagReason),
+      flagReason,
       parentOfferId: offer.id,
       expiresAt: expiry(),
     })
@@ -162,7 +197,7 @@ export async function counterOffer(offerId: string, sellerId: string, amount: nu
     subject: `Counter offer on the ${title}: ${formatPrice(amount)}`,
     paragraphs: [
       `${seller.displayName} countered your ${formatPrice(offer.amount)} offer on the ${title} with ${formatPrice(amount)}.`,
-      ...(message ? [`Their note: "${message}"`] : []),
+      ...noteLines(message, Boolean(flagReason)),
       `You have ${OFFER_HOURS} hours to accept or decline.`,
     ],
     action: { label: "See the counter offer", url: absoluteUrl(url("/offers")) },
@@ -175,10 +210,14 @@ export async function declineOffer(offerId: string, actorId: string): Promise<Of
   const err = checkOpen(ctx, actorId);
   if (err) return { ok: false, error: err };
   const { offer, listing } = ctx!;
-  await getDb()
+  const declined = await getDb()
     .update(offers)
     .set({ status: "declined", respondedAt: new Date() })
-    .where(and(eq(offers.id, offer.id), eq(offers.status, "pending")));
+    .where(and(eq(offers.id, offer.id), eq(offers.status, "pending")))
+    .returning({ id: offers.id })
+    .get();
+  // Someone else answered it first (a withdraw, an accept or a double submit): no email.
+  if (!declined) return { ok: false, error: "This offer is no longer open." };
 
   const otherId = offer.madeBy === "buyer" ? offer.buyerId : listing.userId;
   const [other, actor] = await Promise.all([person(otherId), person(actorId)]);
@@ -199,10 +238,13 @@ export async function withdrawOffer(offerId: string, buyerId: string): Promise<O
   const ctx = await loadOffer(offerId);
   if (!ctx || ctx.offer.buyerId !== buyerId || ctx.offer.madeBy !== "buyer") return { ok: false, error: "Offer not found." };
   if (ctx.offer.status !== "pending") return { ok: false, error: "This offer is no longer open." };
-  await getDb()
+  const withdrawn = await getDb()
     .update(offers)
     .set({ status: "withdrawn", respondedAt: new Date() })
-    .where(and(eq(offers.id, offerId), eq(offers.status, "pending")));
+    .where(and(eq(offers.id, offerId), eq(offers.status, "pending")))
+    .returning({ id: offers.id })
+    .get();
+  if (!withdrawn) return { ok: false, error: "This offer is no longer open." };
   return { ok: true };
 }
 
@@ -218,19 +260,32 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
   const { offer, listing } = ctx!;
   const db = getDb();
 
-  // Claim the listing first so two accepts can't both win.
+  // Take the offer first, only while it is still open, so a withdraw, a
+  // decline or a counter that lands in between can't be overwritten.
+  const now = new Date();
+  const took = await db
+    .update(offers)
+    .set({ status: "accepted", respondedAt: now })
+    .where(and(eq(offers.id, offer.id), eq(offers.status, "pending"), gt(offers.expiresAt, now)))
+    .returning({ id: offers.id })
+    .get();
+  if (!took) return { ok: false, error: "This offer is no longer open." };
+
+  // Then claim the listing so two accepts can't both win.
   const claimed = await db
     .update(listings)
-    .set({ status: "offer_accepted", updatedAt: new Date() })
+    .set({ status: "offer_accepted", updatedAt: now })
     .where(and(eq(listings.id, listing.id), eq(listings.status, "live")))
     .returning({ id: listings.id })
     .get();
-  if (!claimed) return { ok: false, error: "This car already has an accepted offer." };
-
-  await db
-    .update(offers)
-    .set({ status: "accepted", respondedAt: new Date() })
-    .where(eq(offers.id, offer.id));
+  if (!claimed) {
+    // The car left live (another accept, or sold), so this offer is closed, not reopened.
+    await db
+      .update(offers)
+      .set({ status: "declined", respondedAt: now })
+      .where(and(eq(offers.id, offer.id), eq(offers.status, "accepted")));
+    return { ok: false, error: "This car already has an accepted offer." };
+  }
 
   const others = await db
     .update(offers)
@@ -240,7 +295,7 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
     .all();
 
   await audit(actorId, "offer_accepted", "listing", listing.id, { offerId: offer.id, amount: offer.amount });
-  await syncListing(listing.id, actorId);
+  const sync = await syncListing(listing.id, actorId);
 
   const title = listingTitle(listing);
   const [buyer, seller] = await Promise.all([person(offer.buyerId), person(listing.userId)]);
@@ -266,7 +321,8 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
         `Contact the buyer to arrange an inspection and payment: ${buyer.displayName}, ${buyer.email}.`,
         "When the sale is done, mark the car as sold in My garage. If the deal falls through, you can relist it.",
       ],
-      action: { label: "Open My garage", url: absoluteUrl(url("/")) },
+      // Through sign in: a signed-out visit to /app goes to the Lot instead.
+      action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url("/"))}`) },
     }).catch((e) => console.error("[offers] accept email failed", e)),
   ]);
 
@@ -277,17 +333,19 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
       to: who.email,
       subject: `The ${title} has an accepted offer`,
       paragraphs: [
-        `The seller accepted another offer on the ${title}, so your ${formatPrice(o.amount)} offer was declined.`,
+        `The seller accepted another offer on the ${title}, so ${offerPhrase(o)} was declined.`,
         "If that deal falls through and the car is relisted, you can make a new offer.",
       ],
     });
   }
+  // Only the seller can retry the update (from their listing page).
+  if (!sync.ok) return { ok: true, syncFailed: { listingId: listing.id, bySeller: actorId === listing.userId } };
   return { ok: true };
 }
 
 export interface OfferThread {
   key: string;
-  listing: Pick<Listing, "id" | "year" | "make" | "model" | "price" | "status" | "slug" | "userId" | "contactMethod" | "contactPhone">;
+  listing: Pick<Listing, "id" | "year" | "make" | "model" | "price" | "status" | "slug" | "userId" | "contactMethod" | "contactPhone" | "acceptsOffers" | "deletedAt">;
   buyerId: string;
   role: "buyer" | "seller";
   history: Offer[];

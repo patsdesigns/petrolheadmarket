@@ -6,9 +6,11 @@ import { url, siteUrl } from "../lib/paths";
 interface Props {
   user?: { displayName: string; isAdmin: boolean } | null;
   unread?: number;
+  /** Admins only: listings to review, open contact requests and unreviewed flags. */
+  adminTodo?: number;
 }
 
-const { user = null, unread = 0 } = Astro.props;
+const { user = null, unread = 0, adminTodo = 0 } = Astro.props;
 const path = Astro.url.pathname;
 const here = (p: string) => (p === url("/") ? path === p : path.startsWith(p));
 ---
@@ -35,14 +37,22 @@ const here = (p: string) => (p === url("/") ? path === p : path.startsWith(p));
                 )}
               </a>
               <details class="menu">
-                <summary class="ghost">
-                  {user.displayName}
+                <summary class="ghost" title={user.displayName}>
+                  <span class="menu__name">{user.displayName}</span>
+                  {user.isAdmin && adminTodo > 0 && (
+                    <span class="count" aria-label={`${adminTodo} waiting for an admin`}>{adminTodo}</span>
+                  )}
                   <span aria-hidden="true" class="menu__caret">▾</span>
                 </summary>
                 <div class="menu__panel">
                   <a href={url("/account")}>Account settings</a>
                   <a href={url("/offers")}>Offers</a>
-                  {user.isAdmin && <a href={url("/admin")}>Review queue</a>}
+                  {user.isAdmin && (
+                    <a href={url("/admin")}>
+                      Review queue
+                      {adminTodo > 0 && <span class="count" aria-label={`${adminTodo} waiting`}>{adminTodo}</span>}
+                    </a>
+                  )}
                   <form method="post" action={url("/logout")}>
                     <button type="submit">Sign out</button>
                   </form>
@@ -178,6 +188,9 @@ const here = (p: string) => (p === url("/") ? path === p : path.startsWith(p));
   .menu {
     position: relative;
   }
+  .menu__panel .count {
+    margin-left: auto;
+  }
   .menu summary {
     list-style: none;
   }
@@ -186,6 +199,19 @@ const here = (p: string) => (p === url("/") ? path === p : path.startsWith(p));
   }
   .menu__caret {
     font-size: 11px;
+  }
+  /* Long display names are cut short so the bar never overflows. */
+  .menu__name {
+    display: inline-block;
+    max-width: 16ch;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+  }
+  .menu,
+  .menu summary {
+    min-width: 0;
   }
   .menu__panel {
     position: absolute;
@@ -275,9 +301,14 @@ const here = (p: string) => (p === url("/") ? path === p : path.startsWith(p));
     .actions {
       width: 100%;
       margin-left: 0;
+      flex-wrap: wrap;
+      row-gap: 6px;
     }
     .actions .sell {
       margin-left: auto;
+    }
+    .menu__name {
+      max-width: 9ch;
     }
   }
 </style>

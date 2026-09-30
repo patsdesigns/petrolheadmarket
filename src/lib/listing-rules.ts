@@ -156,6 +156,12 @@ export type StepKey = (typeof STEPS)[number]["key"];
  * returned for saving even when other fields have errors, so autosave never
  * loses work.
  */
+/** "Clean title, CA", or just the status when there is no title. */
+export function titleText(titleStatusLabel: string, listing: Pick<Listing, "titleStatus" | "titleState">): string {
+  const state = listing.titleStatus === "none" ? "" : listing.titleState;
+  return [titleStatusLabel, state].filter(Boolean).join(", ");
+}
+
 export function parseStep(step: StepKey, form: Record<string, string>) {
   const def = STEPS.find((s) => s.key === step)!;
   const data: Partial<Record<ListingField, unknown>> = {};
@@ -164,6 +170,11 @@ export function parseStep(step: StepKey, form: Record<string, string>) {
     const result = (FIELD_RULES[field] as z.ZodType).safeParse(form[field] ?? "");
     if (result.success) data[field] = result.data;
     else errors[field] = result.error.issues[0]?.message ?? "Check this field.";
+  }
+  // No title (bill of sale) means there is no title state: clear any old one.
+  if (data.titleStatus === "none") {
+    data.titleState = null;
+    delete errors.titleState;
   }
   return { data: data as Partial<Listing>, errors };
 }
@@ -223,7 +234,7 @@ export function checklist(listing: Listing, photoCount: number): ChecklistItem[]
     });
   }
   need("history", "titleStatus", listing.titleStatus, "Pick the title status.");
-  need("history", "titleState", listing.titleState, "Pick the state on the title.");
+  if (listing.titleStatus !== "none") need("history", "titleState", listing.titleState, "Pick the state on the title.");
 
   if (photoCount < MIN_PHOTOS) {
     issues.push({

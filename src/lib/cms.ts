@@ -1,14 +1,25 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
+import { waitUntil } from "cloudflare:workers";
 import { getDb } from "../db/client";
-import { listings, profiles, type Listing, type ListingPhoto } from "../db/schema";
+import { jobRuns, listings, profiles, user as users, type Listing, type ListingPhoto } from "../db/schema";
 import { absoluteUrl } from "./config";
 import { BODY_STYLES, CONTACT_METHODS, DRIVETRAINS, TRANSMISSIONS } from "./listing-options";
 import { formatMiles, formatPrice, listingTitle } from "./listing-rules";
 import { getPhotos } from "./listings";
 import { photoUrl } from "./paths";
 import { toList, toParagraphs } from "./richtext";
-import { audit } from "./audit";
-import { createLiveItem, slugTaken, updateLiveItem, WebflowError } from "./webflow";
+import { audit, auditFor } from "./audit";
+import { notifySellerLive } from "./notify";
+import {
+  createLiveItem,
+  deleteItem,
+  findItemBySlug,
+  NOT_CONFIGURED_MESSAGE,
+  unpublishLiveItem,
+  updateLiveItem,
+  webflowConfigured,
+  WebflowError,
+} from "./webflow";
 
 const GALLERY_LIMIT = 25; // Webflow MultiImage limit
 
@@ -59,7 +70,9 @@ export function buildFieldData(
   });
   const showPhone = listing.contactMethod === "messages_phone" && listing.contactPhone;
   const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
-  const title = [TITLE_LABELS[listing.titleStatus ?? ""] ?? "", listing.titleState ?? ""].filter(Boolean).join(" - ");
+  // No title (bill of sale) has no state to show.
+  const titleState = listing.titleStatus === "none" ? "" : (listing.titleState ?? "");
+  const title = [TITLE_LABELS[listing.titleStatus ?? ""] ?? "", titleState].filter(Boolean).join(" - ");
 
   return {
     name: listingTitle(listing),
@@ -110,68 +123,153 @@ async function sellerName(userId: string): Promise<string> {
   return p?.displayName ?? "Private seller";
 }
 
-async function pickSlug(listing: Listing): Promise<string> {
-  const db = getDb();
+/** True if a slug is used by another listing in our DB or by any CMS item that isn't this listing's. */
+async function slugClash(candidate: string, listing: Listing): Promise<boolean> {
+  const localClash = await getDb()
+    .select({ id: listings.id })
+    .from(listings)
+    .where(and(eq(listings.slug, candidate), ne(listings.id, listing.id)))
+    .get();
+  if (localClash) return true;
+  const item = await findItemBySlug(candidate);
+  return item !== null && item.fieldData?.["app-listing-id"] !== listing.id;
+}
+
+async function pickSlug(listing: Listing, skipBase = false): Promise<string> {
   const base = baseSlug(listing);
-  for (let i = 0; i < 6; i++) {
+  for (let i = skipBase ? 1 : 0; i < 6; i++) {
     const candidate = i === 0 ? base : `${base}-${crypto.randomUUID().slice(0, 4)}`;
-    const localClash = await db
-      .select({ id: listings.id })
-      .from(listings)
-      .where(and(eq(listings.slug, candidate), ne(listings.id, listing.id)))
-      .get();
-    if (localClash) continue;
-    if (await slugTaken(candidate)) continue;
+    if (await slugClash(candidate, listing)) continue;
     return candidate;
   }
   return `${base}-${crypto.randomUUID().slice(0, 8)}`;
 }
 
-export type PublishResult = { ok: true; slug: string } | { ok: false; error: string };
+/**
+ * Pick a slug and save it before anything is created in the CMS, so a retry
+ * reuses it (and can find the item a lost response created).
+ */
+async function reserveSlug(listing: Listing, skipBase = false): Promise<string> {
+  const db = getDb();
+  for (let i = 0; i < 3; i++) {
+    const slug = await pickSlug(listing, skipBase || i > 0);
+    try {
+      await db.update(listings).set({ slug }).where(eq(listings.id, listing.id));
+      return slug;
+    } catch (err) {
+      // Another listing took it between the check and the write (UNIQUE).
+      if (i === 2) throw err;
+    }
+  }
+  throw new Error("Could not pick a slug.");
+}
+
+export type PublishResult =
+  | { ok: true; slug: string }
+  | { ok: false; error: string; busy?: boolean; notConfigured?: boolean };
+
+const PUBLISH_LEASE_MS = 2 * 60_000;
+
+async function sellerContact(userId: string) {
+  const db = getDb();
+  const u = await db.select().from(users).where(eq(users.id, userId)).get();
+  if (!u) return null;
+  const p = await db.select({ notify: profiles.emailNotifications }).from(profiles).where(eq(profiles.userId, userId)).get();
+  return { email: u.email, name: u.name?.split(/\s+/)[0] || "there", notify: p?.notify ?? true };
+}
 
 /**
- * Publish an approved listing as a live CMS item. On failure the listing
- * stays `approved` and the error is logged so an admin can retry.
+ * Publish an approved listing as a live CMS item and email the seller. On
+ * failure the listing stays `approved` and the error is logged; the admin can
+ * retry, and retryPendingCms() tries again on its own.
+ *
+ * Safe to call twice at once: the first call claims the listing
+ * (publishing_at), the slug is saved before the create, and an item that
+ * already carries this listing's id is adopted rather than created again.
  */
-export async function publishListing(listingId: string, actorId: string): Promise<PublishResult> {
+export async function publishListing(listingId: string, actorId: string | null): Promise<PublishResult> {
+  if (!webflowConfigured()) return { ok: false, error: NOT_CONFIGURED_MESSAGE, notConfigured: true };
   const db = getDb();
-  const listing = await db.select().from(listings).where(eq(listings.id, listingId)).get();
-  if (!listing || listing.status !== "approved") return { ok: false, error: "Listing is not approved." };
+  const now = new Date();
+  const listing = await db
+    .update(listings)
+    .set({ publishingAt: now, cmsAttemptedAt: now })
+    .where(
+      and(
+        eq(listings.id, listingId),
+        eq(listings.status, "approved"),
+        or(isNull(listings.publishingAt), lt(listings.publishingAt, new Date(now.getTime() - PUBLISH_LEASE_MS))),
+      ),
+    )
+    .returning()
+    .get();
+  if (!listing) {
+    const current = await db.select({ status: listings.status }).from(listings).where(eq(listings.id, listingId)).get();
+    if (current?.status === "approved") return { ok: false, busy: true, error: "Publishing is already in progress." };
+    return { ok: false, error: "Listing is not approved." };
+  }
 
   try {
     const photos = await getPhotos(listing.id);
-    const publishedAt = listing.publishedAt ?? new Date();
-    const fieldData = {
-      ...buildFieldData({ ...listing, publishedAt }, photos, await sellerName(listing.userId), "live"),
-      slug: listing.slug ?? (await pickSlug(listing)),
-    };
+    const publishedAt = listing.publishedAt ?? now;
+    const name = await sellerName(listing.userId);
+    let slug = listing.slug ?? (await reserveSlug(listing));
+    const fields = () => ({ ...buildFieldData({ ...listing, publishedAt }, photos, name, "live"), slug });
 
-    // A previous attempt may have created the item already.
-    let item;
-    if (listing.cmsItemId) {
-      item = await updateLiveItem(listing.cmsItemId, fieldData);
+    let itemId = listing.cmsItemId;
+    if (!itemId) {
+      // A previous try may have created the item and lost the response.
+      const existing = await findItemBySlug(slug);
+      if (existing && existing.fieldData?.["app-listing-id"] === listing.id) itemId = existing.id;
+      else if (existing) slug = await reserveSlug(listing, true);
+    }
+
+    if (itemId) {
+      await updateLiveItem(itemId, fields());
+      if (itemId !== listing.cmsItemId) {
+        await db.update(listings).set({ cmsItemId: itemId }).where(eq(listings.id, listing.id));
+      }
     } else {
+      let item;
       try {
-        item = await createLiveItem(fieldData);
+        item = await createLiveItem(fields());
       } catch (err) {
         // The slug lookup can miss a clash (e.g. an archived item). Try once more with a suffix.
         if (!(err instanceof WebflowError && err.status === 400 && /slug/i.test(err.message))) throw err;
-        fieldData.slug = `${baseSlug(listing)}-${crypto.randomUUID().slice(0, 4)}`;
-        item = await createLiveItem(fieldData);
+        const clash = await findItemBySlug(slug);
+        if (clash && clash.fieldData?.["app-listing-id"] === listing.id) {
+          item = await updateLiveItem(clash.id, fields());
+        } else {
+          slug = await reserveSlug(listing, true);
+          item = await createLiveItem(fields());
+        }
       }
+      itemId = item.id;
+      // Record the item straight away, so any later retry updates it.
+      await db.update(listings).set({ cmsItemId: itemId }).where(eq(listings.id, listing.id));
     }
-    const slug = fieldData.slug;
 
-    await db
+    const done = await db
       .update(listings)
-      .set({ status: "live", slug, cmsItemId: item.id, publishedAt, updatedAt: new Date() })
-      .where(eq(listings.id, listing.id));
-    await audit(actorId, "cms_publish", "listing", listing.id, { cmsItemId: item.id, slug });
+      .set({ status: "live", slug, cmsItemId: itemId, publishedAt, publishingAt: null, cmsSyncPending: false, updatedAt: new Date() })
+      .where(and(eq(listings.id, listing.id), eq(listings.status, "approved")))
+      .returning({ id: listings.id })
+      .get();
+    if (!done) {
+      // Moved back to review or taken down while this was running: take the item off again.
+      await db.update(listings).set({ publishingAt: null }).where(eq(listings.id, listing.id));
+      await unpublishListing(listing.id, actorId);
+      return { ok: false, error: "The listing changed while it was being published." };
+    }
+    await audit(actorId, "cms_publish", "listing", listing.id, { cmsItemId: itemId, slug });
+    const seller = await sellerContact(listing.userId);
+    if (seller) await notifySellerLive(seller, listing.id, listingTitle(listing), slug);
     return { ok: true, slug };
   } catch (err) {
+    await db.update(listings).set({ publishingAt: null, cmsAttemptedAt: new Date() }).where(eq(listings.id, listing.id));
     const error = err instanceof Error ? err.message : String(err);
     console.error("[cms] publish failed", listing.id, error);
-    await audit(actorId, "cms_publish_failed", "listing", listing.id, {
+    await auditFailure(actorId, "cms_publish_failed", listing.id, {
       error,
       status: err instanceof WebflowError ? err.status : null,
     });
@@ -179,9 +277,34 @@ export async function publishListing(listingId: string, actorId: string): Promis
   }
 }
 
+/** Statuses whose listing is an item on the live site. */
+export const IN_CMS_STATUSES = ["live", "offer_accepted", "sold"] as const;
+
+const markPending = (listingId: string, pending: boolean) =>
+  getDb()
+    .update(listings)
+    .set(pending ? { cmsSyncPending: true, cmsAttemptedAt: new Date() } : { cmsSyncPending: false })
+    .where(eq(listings.id, listingId));
+
+/**
+ * Audit a failed publish, sync or unpublish. The lazy retry (no actor) runs
+ * every minute while an admin is on the admin pages, so it only adds a row
+ * when the error differs from the listing's latest entry. Otherwise one
+ * listing that keeps failing would push everything else out of its History.
+ */
+async function auditFailure(actorId: string | null, action: string, listingId: string, data: { error: string } & Record<string, unknown>) {
+  if (actorId === null) {
+    const [last] = await auditFor("listing", listingId, 1);
+    const lastError = (last?.data as { error?: unknown } | null)?.error;
+    if (last?.action === action && lastError === data.error) return;
+  }
+  await audit(actorId, action, "listing", listingId, data);
+}
+
 /**
  * Push the current state of a listing that is already in the CMS
  * (live, offer accepted or sold). Used after quick edits and status changes.
+ * A failure sets cms_sync_pending, which the admin pages retry.
  */
 export async function syncListing(listingId: string, actorId: string | null): Promise<PublishResult> {
   const db = getDb();
@@ -196,12 +319,166 @@ export async function syncListing(listingId: string, actorId: string | null): Pr
       slug: listing.slug,
     };
     await updateLiveItem(listing.cmsItemId, fieldData);
+    // The PATCH publishes the item. If the listing was taken down while it
+    // was on its way, it may have landed after the take down's unpublish and
+    // put the car back on the Lot, so take it off again.
+    const current = await db.select({ status: listings.status }).from(listings).where(eq(listings.id, listing.id)).get();
+    if (!current || !(IN_CMS_STATUSES as readonly string[]).includes(current.status)) {
+      await unpublishListing(listing.id, actorId);
+      return { ok: false, error: "The listing changed while it was being updated." };
+    }
+    if (listing.cmsSyncPending) {
+      // Only while it is still a listing that belongs on the site, so a
+      // pending unpublish is never cleared by a sync that lost the race.
+      await db
+        .update(listings)
+        .set({ cmsSyncPending: false })
+        .where(and(eq(listings.id, listing.id), inArray(listings.status, [...IN_CMS_STATUSES])));
+    }
     await audit(actorId, "cms_sync", "listing", listing.id, { status: listing.status });
     return { ok: true, slug: listing.slug };
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     console.error("[cms] sync failed", listing.id, error);
-    await audit(actorId, "cms_sync_failed", "listing", listing.id, { error });
+    await markPending(listing.id, true);
+    await auditFailure(actorId, "cms_sync_failed", listing.id, { error });
     return { ok: false, error };
   }
+}
+
+/**
+ * Take a listing's item off the public site. Used when a listing is taken
+ * down. The listing's own status is changed by the caller first. The item
+ * id and slug are kept (the slug stays reserved, and a later delete can
+ * remove the staged item). A failure sets cms_sync_pending for a retry.
+ */
+export async function unpublishListing(listingId: string, actorId: string | null): Promise<{ ok: boolean; error?: string }> {
+  const listing = await getDb().select().from(listings).where(eq(listings.id, listingId)).get();
+  if (!listing?.cmsItemId) return { ok: true };
+  try {
+    await unpublishLiveItem(listing.cmsItemId);
+    if (listing.cmsSyncPending) await markPending(listing.id, false);
+    await audit(actorId, "cms_unpublish", "listing", listing.id, { cmsItemId: listing.cmsItemId });
+    return { ok: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    console.error("[cms] unpublish failed", listing.id, error);
+    await markPending(listing.id, true);
+    await auditFailure(actorId, "cms_unpublish_failed", listing.id, { error });
+    return { ok: false, error };
+  }
+}
+
+/**
+ * Bring the CMS in line with the app for one listing: sync it when it should
+ * be on the site, take it off when it should not.
+ */
+export async function resyncListing(listingId: string, actorId: string | null): Promise<{ ok: boolean; error?: string }> {
+  const listing = await getDb().select().from(listings).where(eq(listings.id, listingId)).get();
+  if (!listing?.cmsItemId) return { ok: false, error: "Listing is not in the CMS." };
+  if ((IN_CMS_STATUSES as readonly string[]).includes(listing.status)) return syncListing(listingId, actorId);
+  return unpublishListing(listingId, actorId);
+}
+
+/**
+ * Remove a taken down listing's item from the CMS for good, before the
+ * listing itself is deleted. Refuses while the item may still be live.
+ */
+export async function removeFromCms(listing: Listing): Promise<{ ok: boolean; error?: string }> {
+  if (!listing.cmsItemId) return { ok: true };
+  if (listing.cmsSyncPending) {
+    const r = await unpublishListing(listing.id, listing.userId);
+    if (!r.ok) return { ok: false, error: "It is still being taken off the site. Try again in a few minutes." };
+  }
+  try {
+    await deleteItem(listing.cmsItemId);
+  } catch (err) {
+    // The item is already off the live site; a leftover staged copy is harmless.
+    console.error("[cms] delete item failed", listing.id, err instanceof Error ? err.message : String(err));
+  }
+  return { ok: true };
+}
+
+const RETRY_EVERY_MS = 60_000;
+const RETRY_BATCH = 5;
+
+/**
+ * Lazy retry (there is no cron): publish approved listings and fix listings
+ * with a pending CMS sync or unpublish. Runs when any admin page loads
+ * (scheduleCmsRetry), at most once a minute (a job_runs row), and only when
+ * publishing is configured, so no failures pile up in the audit log while
+ * the token is missing. `force` skips the throttle (the Retry all button).
+ */
+export async function retryPendingCms(opts: { force?: boolean } = {}): Promise<{ published: number; synced: number; failed: number } | null> {
+  if (!webflowConfigured()) return null;
+  const db = getDb();
+  const now = Date.now();
+  const claimed = await db
+    .insert(jobRuns)
+    .values({ name: "cms_retry", ranAt: now })
+    .onConflictDoUpdate({
+      target: jobRuns.name,
+      set: { ranAt: now },
+      setWhere: opts.force ? undefined : sql`${jobRuns.ranAt} < ${now - RETRY_EVERY_MS}`,
+    })
+    .returning({ name: jobRuns.name })
+    .get();
+  if (!claimed) return null;
+
+  const result = { published: 0, synced: 0, failed: 0 };
+  const approved = await db
+    .select({ id: listings.id })
+    .from(listings)
+    .where(eq(listings.status, "approved"))
+    // Never tried first (NULL sorts first), then the ones tried longest ago,
+    // so listings that keep failing rotate to the back of the line.
+    .orderBy(asc(listings.cmsAttemptedAt), asc(listings.reviewedAt))
+    .limit(RETRY_BATCH)
+    .all();
+  for (const l of approved) {
+    const r = await publishListing(l.id, null);
+    if (r.ok) result.published++;
+    else if (!("busy" in r && r.busy)) result.failed++;
+  }
+
+  const pending = await db
+    .select({ id: listings.id })
+    .from(listings)
+    .where(and(eq(listings.cmsSyncPending, true), isNotNull(listings.cmsItemId)))
+    .orderBy(asc(listings.cmsAttemptedAt), asc(listings.updatedAt))
+    .limit(RETRY_BATCH)
+    .all();
+  for (const l of pending) {
+    const r = await resyncListing(l.id, null);
+    if (r.ok) result.synced++;
+    else result.failed++;
+  }
+  return result;
+}
+
+/**
+ * Start the lazy retry after the response is sent, so the page stays fast.
+ * Called by every admin page (AdminNav and the review screen) on GET.
+ */
+export async function scheduleCmsRetry(): Promise<void> {
+  if (!webflowConfigured()) return;
+  const job = retryPendingCms().then(
+    () => undefined,
+    (err) => console.error("[cms] lazy retry failed", err),
+  );
+  try {
+    waitUntil(job);
+  } catch {
+    await job;
+  }
+}
+
+/** Listings whose CMS item is out of date, for the admin queue. */
+export async function pendingCmsListings() {
+  return getDb()
+    .select()
+    .from(listings)
+    .where(and(eq(listings.cmsSyncPending, true), isNotNull(listings.cmsItemId)))
+    .orderBy(asc(listings.updatedAt))
+    .all();
 }

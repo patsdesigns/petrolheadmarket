@@ -6,28 +6,50 @@ import Notice from "../components/Notice.astro";
 import CarSummary from "../components/CarSummary.astro";
 import { url } from "../lib/paths";
 import { parseForm } from "../lib/forms";
-import { getPublicListing } from "../lib/public-listing";
+import { getPublicListing, isAppSlug, slugFromReferer, validSlug } from "../lib/public-listing";
+import NotOnApp from "../components/NotOnApp.astro";
 import { createOffer, expireStaleOffers, minOffer, openOfferFor, OFFER_HOURS } from "../lib/offers";
 import { offerRateLimited } from "../lib/rate-limit";
 import { formatPrice } from "../lib/listing-rules";
+import { canTransact, publicOrigin } from "../lib/config";
+import type { Listing } from "../db/schema";
 
-const user = Astro.locals.user!;
-const slug = Astro.url.searchParams.get("listing");
-const found = await getPublicListing(slug);
-if (!found) return Astro.rewrite(url("/404"));
-const { listing } = found;
-const selfUrl = `${url("/offer")}?listing=${encodeURIComponent(slug!)}`;
+// Look the listing up before anything else: the Lot's sample listings are
+// not in the app, and nobody should have to sign up to find that out.
+const rawSlug = Astro.url.searchParams.get("listing");
+if (!rawSlug) {
+  const fromReferer = slugFromReferer(Astro.request, publicOrigin());
+  if (fromReferer) return Astro.redirect(`${url("/offer")}?listing=${encodeURIComponent(fromReferer)}`, 303);
+}
+const slug = validSlug(rawSlug);
+const found = slug ? await getPublicListing(slug) : null;
+let notOpen: "sample" | "gone" | "missing" | null = null;
+if (!found) {
+  // A friendly page with status 200: the Lot links here from every car, and a
+  // 404 status could be replaced by the host's generic error page.
+  notOpen = !rawSlug ? "missing" : slug && (await isAppSlug(slug)) ? "gone" : "sample";
+}
+// A real listing needs an account (the middleware lets signed-out GETs through to here).
+const maybeUser = Astro.locals.user;
+if (found && !maybeUser) {
+  return Astro.redirect(`${url("/login")}?next=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`, 303);
+}
+// Below here only runs for a real listing and a signed-in person; the
+// template shows NotOnApp otherwise.
+const user = maybeUser!;
+const listing = found?.listing as Listing;
+const selfUrl = `${url("/offer")}?listing=${encodeURIComponent(slug ?? "")}`;
 
 let errors: Record<string, string> = {};
 let values: Record<string, string> = {};
 let formError = "";
 
-const isOwn = listing.userId === user.id;
-await expireStaleOffers();
-const open = await openOfferFor(listing.id, user.id);
-const closed = listing.status !== "live" || !listing.acceptsOffers;
+const isOwn = found ? listing.userId === user.id : false;
+if (found) await expireStaleOffers();
+const open = found ? await openOfferFor(listing.id, user.id) : undefined;
+const closed = !found || listing.status !== "live" || !listing.acceptsOffers;
 
-if (Astro.request.method === "POST" && !isOwn && !closed) {
+if (found && Astro.request.method === "POST" && !isOwn && !closed) {
   const parsed = await parseForm(
     Astro.request,
     z.object({
@@ -41,7 +63,7 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
   );
   values = parsed.values;
   if (!parsed.ok) errors = parsed.errors;
-  else if (!user.emailVerified) formError = "Confirm your email before you make an offer.";
+  else if (!canTransact(user)) formError = "Confirm your email before you make an offer.";
   else if (await offerRateLimited(user.id)) formError = "You have made a lot of offers in the last hour. Try again later.";
   else {
     const result = await createOffer(listing, user.id, parsed.data.amount, parsed.data.message || null);
@@ -52,6 +74,10 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
 ---
 
 <Base title="Make an offer">
+  {notOpen || !found ? (
+    <NotOnApp reason={notOpen ?? "missing"} slug={slug} action="offer" />
+  ) : (
+  <>
   <a class="back" href={url("/offers")}>← Offers</a>
   <h1 class="page-title">Make an offer</h1>
   <div class="split">
@@ -68,7 +94,7 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
             ? "The seller is not taking offers on this car. You can still message them."
             : "This car is no longer taking offers."}
         </p>
-        {listing.status === "live" && <p><a href={`${url("/message")}?listing=${encodeURIComponent(slug!)}`}>Message the seller</a></p>}
+        {listing.status === "live" && <p><a href={`${url("/message")}?listing=${encodeURIComponent(slug ?? "")}`}>Message the seller</a></p>}
       </Notice>
     ) : open ? (
       <Notice tone="info">
@@ -82,7 +108,7 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
         <div class="buy__label">Asking price</div>
         <div class="buy__price">{formatPrice(listing.price)}</div>
         <p class="floor">Offers from {formatPrice(minOffer(listing.price!))} (half the asking price)</p>
-        {!user.emailVerified && (
+        {!canTransact(user) && (
           <Notice tone="info">
             <p><a href={`${url("/verify-email")}?next=${encodeURIComponent(selfUrl)}`}>Confirm your email</a> to make an offer.</p>
           </Notice>
@@ -93,7 +119,7 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
             hint={`Whole dollars. At least ${formatPrice(minOffer(listing.price!))}, half the asking price.`} />
           <div class="field">
             <label for="f-message">Note to the seller</label>
-            <span class="hint" id="f-message-hint">Optional. Say when you could see the car or how you would pay.</span>
+            <span class="hint" id="f-message-hint">Optional. Say when you could see the car. Keep phone numbers and payment details for after the seller accepts.</span>
             <textarea id="f-message" name="message" rows="4" maxlength="1000" aria-describedby="f-message-hint">{values.message ?? ""}</textarea>
             {errors.message && <span class="error">{errors.message}</span>}
           </div>
@@ -101,13 +127,15 @@ if (Astro.request.method === "POST" && !isOwn && !closed) {
             The seller has {OFFER_HOURS} hours to accept, counter or decline. If they accept, you both get each other's contact
             details to arrange an inspection and payment.
           </p>
-          <button class="btn" type="submit" disabled={!user.emailVerified}>Send offer</button>
+          <button class="btn" type="submit" disabled={!canTransact(user)}>Send offer</button>
         </form>
       </div>
     )
   }
   </div>
   </div>
+  </>
+  )}
 </Base>
 
 <style>

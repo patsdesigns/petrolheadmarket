@@ -1,13 +1,15 @@
 ---
 import Base from "../layouts/Base.astro";
 import { url, siteUrl } from "../lib/paths";
+
+const signedIn = Boolean(Astro.locals.user);
 ---
 
 <Base title="Page not found">
   <h1 class="page-title">Page not found</h1>
   <p class="lede">That page does not exist or has moved.</p>
   <p style="display:flex;gap:12px;flex-wrap:wrap">
-    <a class="btn" href={url("/")}>Go to my garage</a>
+    <a class="btn" href={signedIn ? url("/") : `${url("/login")}?next=${encodeURIComponent(url("/"))}`}>{signedIn ? "Go to my garage" : "Sign in"}</a>
     <a class="btn btn--secondary" href={siteUrl("/")}>Browse cars</a>
   </p>
 </Base>

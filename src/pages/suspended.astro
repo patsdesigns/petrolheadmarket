@@ -1,0 +1,45 @@
+---
+import Base from "../layouts/Base.astro";
+import { url, siteUrl } from "../lib/paths";
+import { supportEmail } from "../lib/config";
+import { contactHref } from "../lib/contact";
+
+// Only for suspended accounts (and people turned away at sign in).
+if (Astro.locals.user) return Astro.redirect(url("/"), 303);
+
+const support = supportEmail();
+const helpHref = contactHref("suspended", { subject: "My account is suspended" });
+Astro.response.status = Astro.locals.suspended ? 403 : 200;
+---
+
+<Base title="Account suspended">
+  <h1 class="page-title">Your account is suspended</h1>
+  <p class="lede">
+    Our team suspended this account, so you can't sign in, list a car, make offers or send messages. Your listings are no
+    longer on the site.
+  </p>
+  <p class="lede">
+    If you think this is a mistake, <a href={helpHref}>{support ? "email our team" : "contact the team"}</a>.
+  </p>
+  <div class="actions">
+    {
+      Astro.locals.suspended && (
+        <form method="post" action={url("/logout")}>
+          <button class="btn" type="submit">Sign out</button>
+        </form>
+      )
+    }
+    <a class="btn btn--secondary" href={siteUrl("/")}>Back to the Lot</a>
+  </div>
+</Base>
+
+<style>
+  .actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .actions form {
+    margin: 0;
+  }
+</style>

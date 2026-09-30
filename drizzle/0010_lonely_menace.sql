@@ -1,0 +1,1 @@
+ALTER TABLE `messages` ADD `hidden_at` integer;

@@ -29,6 +29,7 @@ if (Astro.request.method === "POST") {
       rememberMe: true,
     });
     if (result.ok) return redirectWithCookies(next, result.cookies);
+    if (result.code === "ACCOUNT_SUSPENDED") return Astro.redirect(url("/suspended"), 303);
     formError = friendlyAuthError(result);
     Astro.response.status = result.status === 429 ? 429 : 400;
   }

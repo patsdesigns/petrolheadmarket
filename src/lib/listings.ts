@@ -1,5 +1,4 @@
-import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
-import { env } from "cloudflare:workers";
+import { and, asc, count, desc, eq, inArray, isNull, notExists } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { listingPhotos, listings, type Listing, type ListingPhoto } from "../db/schema";
 import { EDITABLE_STATUSES } from "./listing-options";
@@ -12,7 +11,7 @@ export async function getOwnListing(userId: string, id: string): Promise<Listing
   return getDb()
     .select()
     .from(listings)
-    .where(and(eq(listings.id, id), eq(listings.userId, userId)))
+    .where(and(eq(listings.id, id), eq(listings.userId, userId), isNull(listings.deletedAt)))
     .get();
 }
 
@@ -47,12 +46,12 @@ export async function listForUser(userId: string) {
   const rows = await db
     .select()
     .from(listings)
-    .where(eq(listings.userId, userId))
+    .where(and(eq(listings.userId, userId), isNull(listings.deletedAt)))
     .orderBy(desc(listings.updatedAt))
     .all();
   if (rows.length === 0) return [];
 
-  const ids = rows.map((r) => r.id);
+  // Scoped by owner with a join, not an id list: D1 caps bound parameters at 100.
   const firsts = await db
     .select({
       listingId: listingPhotos.listingId,
@@ -60,7 +59,8 @@ export async function listForUser(userId: string) {
       position: listingPhotos.position,
     })
     .from(listingPhotos)
-    .where(inArray(listingPhotos.listingId, ids))
+    .innerJoin(listings, eq(listings.id, listingPhotos.listingId))
+    .where(eq(listings.userId, userId))
     .orderBy(asc(listingPhotos.position))
     .all();
   const counts = new Map<string, number>();
@@ -72,8 +72,29 @@ export async function listForUser(userId: string) {
   return rows.map((l) => ({ ...l, mainPhoto: main.get(l.id) ?? null, photoCount: counts.get(l.id) ?? 0 }));
 }
 
+/**
+ * Start a new draft, or reuse the seller's newest empty one (no year, make,
+ * model or photos) so repeated "Start a new listing" taps don't pile up
+ * empty drafts. Null when the seller already has MAX_OPEN_DRAFTS drafts.
+ */
 export async function createDraft(userId: string): Promise<string | null> {
   const db = getDb();
+  const empty = await db
+    .select({ id: listings.id })
+    .from(listings)
+    .where(
+      and(
+        eq(listings.userId, userId),
+        eq(listings.status, "draft"),
+        isNull(listings.year),
+        isNull(listings.make),
+        isNull(listings.model),
+        notExists(db.select({ id: listingPhotos.id }).from(listingPhotos).where(eq(listingPhotos.listingId, listings.id))),
+      ),
+    )
+    .orderBy(desc(listings.createdAt))
+    .get();
+  if (empty) return empty.id;
   const open = await db
     .select({ n: count() })
     .from(listings)
@@ -85,9 +106,9 @@ export async function createDraft(userId: string): Promise<string | null> {
   return id;
 }
 
-export async function saveListingFields(id: string, userId: string, data: Partial<Listing>): Promise<void> {
-  if (Object.keys(data).length === 0) return;
-  await getDb()
+/** Save fields on an editable listing. False when the listing is no longer editable (nothing saved). */
+export async function saveListingFields(id: string, userId: string, data: Partial<Listing>): Promise<boolean> {
+  const row = await getDb()
     .update(listings)
     .set({ ...data, updatedAt: new Date() })
     .where(
@@ -96,17 +117,10 @@ export async function saveListingFields(id: string, userId: string, data: Partia
         eq(listings.userId, userId),
         inArray(listings.status, [...EDITABLE_STATUSES]),
       ),
-    );
-}
-
-/** Delete a listing and its photos in R2. Only drafts, only by the owner. */
-export async function deleteDraft(userId: string, id: string): Promise<boolean> {
-  const listing = await getOwnListing(userId, id);
-  if (!listing || listing.status !== "draft") return false;
-  const photos = await getPhotos(id);
-  if (photos.length) await env.PHOTOS.delete(photos.map((p) => p.r2Key));
-  await getDb().delete(listings).where(eq(listings.id, id));
-  return true;
+    )
+    .returning({ id: listings.id })
+    .get();
+  return Boolean(row);
 }
 
 export async function touchListing(id: string): Promise<void> {

@@ -10,8 +10,9 @@ import { getDb } from "../../db/client";
 import { profiles } from "../../db/schema";
 import { url, siteUrl } from "../../lib/paths";
 import { formatPrice, listingTitle } from "../../lib/listing-rules";
-import { getThreadForUser, inboxFor, markRead, MAX_MESSAGE } from "../../lib/messaging";
+import { getThreadForUser, inboxFor, markRead, MAX_MESSAGE, unreadCount } from "../../lib/messaging";
 import { threadView } from "../../lib/thread-view";
+import { canTransact } from "../../lib/config";
 
 const user = Astro.locals.user!;
 const isAdmin = Astro.locals.profile?.role === "admin";
@@ -19,14 +20,20 @@ const found = await getThreadForUser(Astro.params.threadId!, user.id, isAdmin);
 if (!found) return Astro.rewrite(url("/404"));
 const { thread, listing, participant } = found;
 
-if (participant) await markRead(thread.id, user.id);
+if (participant) {
+  await markRead(thread.id, user.id);
+  // The middleware counted before this thread was read; the header renders after.
+  Astro.locals.unread = await unreadCount(user.id);
+}
 
 const otherId = thread.buyerId === user.id ? thread.sellerId : thread.buyerId;
 const other = await getDb().select().from(profiles).where(eq(profiles.userId, otherId)).get();
 const otherName = participant ? (other?.displayName ?? "Member") : "Buyer and seller";
-const initial = await threadView(thread.id, participant ? user.id : thread.buyerId);
+const initial = await threadView(thread.id, participant ? user.id : thread.buyerId, !participant);
 const isSeller = thread.sellerId === user.id;
 const rows = participant ? await inboxFor(user.id) : [];
+// Messages close when a listing is taken down or rejected (sendMessage checks too).
+const onSite = ["live", "offer_accepted", "sold"].includes(listing.status);
 const offerLink = listing.slug && !isSeller && listing.status === "live" && listing.acceptsOffers
   ? `${url("/offer")}?listing=${encodeURIComponent(listing.slug)}`
   : null;
@@ -47,7 +54,7 @@ const offerLink = listing.slug && !isSeller && listing.status === "live" && list
       <h2 class="who">{participant ? otherName : "Conversation"}</h2>
       <p class="about">
         {isSeller ? "About your " : "About the "}
-        {listing.slug ? <a href={siteUrl(`/listings/${listing.slug}`)}>{listingTitle(listing)}</a> : listingTitle(listing)}
+        {listing.slug && onSite ? <a href={siteUrl(`/listings/${listing.slug}`)}>{listingTitle(listing)}</a> : listingTitle(listing)}
         {listing.price && <span class="price"> · {formatPrice(listing.price)}</span>}
         {offerLink && <> · <a href={offerLink}>Make an offer</a></>}
       </p>
@@ -58,11 +65,12 @@ const offerLink = listing.slug && !isSeller && listing.status === "live" && list
         endpoint={url(`/api/threads/${thread.id}/messages`)}
         initial={initial}
         otherName={participant ? otherName : "Seller"}
-        canReply={participant && user.emailVerified}
+        canReply={participant && onSite && canTransact(user)}
         maxLength={MAX_MESSAGE}
       />
-      {participant && !user.emailVerified && (
-        <p class="muted"><a href={url("/verify-email")}>Confirm your email</a> to reply.</p>
+      {participant && !onSite && <p class="muted">This listing is no longer on the site, so the conversation is closed.</p>}
+      {participant && onSite && !canTransact(user) && (
+        <p class="muted"><a href={`${url("/verify-email")}?next=${encodeURIComponent(url(`/inbox/${thread.id}`))}`}>Confirm your email</a> to reply.</p>
       )}
     </div>
   </div>

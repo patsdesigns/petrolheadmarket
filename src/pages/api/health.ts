@@ -5,7 +5,8 @@ import { env } from "cloudflare:workers";
 // Only reports setting names, never values.
 const REQUIRED = ["BETTER_AUTH_SECRET", "PUBLIC_SITE_URL", "ADMIN_EMAILS"] as const;
 const FOR_EMAIL = ["RESEND_API_KEY", "EMAIL_FROM"] as const;
-const FOR_PUBLISHING = ["WEBFLOW_API_TOKEN", "WEBFLOW_SITE_ID", "WEBFLOW_COLLECTION_ID"] as const;
+// The site and collection IDs have defaults in src/lib/webflow.ts.
+const FOR_PUBLISHING = ["WEBFLOW_API_TOKEN"] as const;
 
 export const GET: APIRoute = async () => {
   const checks: Record<string, "ok" | "missing" | "error"> = {};

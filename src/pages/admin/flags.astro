@@ -1,31 +1,65 @@
 ---
 import { and, desc, eq, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 import Base from "../../layouts/Base.astro";
+import AdminNav from "../../components/AdminNav.astro";
 import Notice from "../../components/Notice.astro";
 import { getDb } from "../../db/client";
-import { listings, messages, profiles, threads } from "../../db/schema";
+import { listings, messages, offers, profiles, threads } from "../../db/schema";
+import { formatPrice } from "../../lib/listing-rules";
 import { url } from "../../lib/paths";
 import { listingTitle } from "../../lib/listing-rules";
 import { audit } from "../../lib/audit";
+import { suspendUser } from "../../lib/admin-users";
 
 const admin = Astro.locals.user!;
 if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
 const db = getDb();
 
+let result: { ok: boolean; message?: string; error?: string } | null = null;
+
 if (Astro.request.method === "POST") {
-  const id = String((await Astro.request.formData()).get("messageId") ?? "").slice(0, 64);
-  const done = await db
-    .update(messages)
-    .set({ flagReviewedAt: new Date() })
-    .where(and(eq(messages.id, id), eq(messages.flagged, true)))
-    .returning({ id: messages.id })
-    .get();
-  if (done) await audit(admin.id, "flag_reviewed", "message", id);
-  return Astro.redirect(`${url("/admin/flags")}?done=1`, 303);
+  const form = await Astro.request.formData();
+  if (form.get("intent") === "hide") {
+    // Hide a flagged message from both members. It is dealt with, so it
+    // leaves this list too.
+    const id = String(form.get("messageId") ?? "").slice(0, 64);
+    const now = new Date();
+    const done = await db
+      .update(messages)
+      .set({ hiddenAt: now, flagReviewedAt: now })
+      .where(and(eq(messages.id, id), eq(messages.flagged, true), isNull(messages.hiddenAt)))
+      .returning({ id: messages.id })
+      .get();
+    if (done) await audit(admin.id, "message_hidden", "message", id);
+    return Astro.redirect(`${url("/admin/flags")}?hidden=1`, 303);
+  } else if (form.get("intent") === "suspend") {
+    result = await suspendUser(admin.id, String(form.get("userId") ?? "").slice(0, 64));
+  } else if (form.get("offerId")) {
+    const id = String(form.get("offerId") ?? "").slice(0, 64);
+    const done = await db
+      .update(offers)
+      .set({ flagReviewedAt: new Date() })
+      .where(and(eq(offers.id, id), eq(offers.flagged, true)))
+      .returning({ id: offers.id })
+      .get();
+    if (done) await audit(admin.id, "flag_reviewed", "offer", id);
+    return Astro.redirect(`${url("/admin/flags")}?done=1`, 303);
+  } else {
+    const id = String(form.get("messageId") ?? "").slice(0, 64);
+    const done = await db
+      .update(messages)
+      .set({ flagReviewedAt: new Date() })
+      .where(and(eq(messages.id, id), eq(messages.flagged, true)))
+      .returning({ id: messages.id })
+      .get();
+    if (done) await audit(admin.id, "flag_reviewed", "message", id);
+    return Astro.redirect(`${url("/admin/flags")}?done=1`, 303);
+  }
 }
 
 const rows = await db
-  .select({ message: messages, thread: threads, listing: listings, sender: profiles.displayName })
+  .select({ message: messages, thread: threads, listing: listings, sender: profiles.displayName, senderRole: profiles.role })
   .from(messages)
   .innerJoin(threads, eq(threads.id, messages.threadId))
   .innerJoin(listings, eq(listings.id, threads.listingId))
@@ -34,19 +68,55 @@ const rows = await db
   .orderBy(desc(messages.createdAt))
   .limit(100)
   .all();
+
+// Offer and counter notes caught by the same filter. The sender is the buyer
+// for an offer and the listing's seller for a counter.
+const buyerProfile = alias(profiles, "buyer_profile");
+const sellerProfile = alias(profiles, "seller_profile");
+const offerRows = await db
+  .select({
+    offer: offers,
+    listing: listings,
+    buyerName: buyerProfile.displayName,
+    buyerRole: buyerProfile.role,
+    sellerName: sellerProfile.displayName,
+    sellerRole: sellerProfile.role,
+  })
+  .from(offers)
+  .innerJoin(listings, eq(listings.id, offers.listingId))
+  .leftJoin(buyerProfile, eq(buyerProfile.userId, offers.buyerId))
+  .leftJoin(sellerProfile, eq(sellerProfile.userId, listings.userId))
+  .where(and(eq(offers.flagged, true), isNull(offers.flagReviewedAt)))
+  .orderBy(desc(offers.createdAt))
+  .limit(100)
+  .all();
+const offerFlags = offerRows.map((r) => {
+  const byBuyer = r.offer.madeBy === "buyer";
+  return {
+    ...r,
+    senderId: byBuyer ? r.offer.buyerId : r.listing.userId,
+    senderName: (byBuyer ? r.buyerName : r.sellerName) ?? "Member",
+    senderIsAdmin: (byBuyer ? r.buyerRole : r.sellerRole) === "admin",
+    kind: byBuyer ? "offer" : "counter offer",
+  };
+});
 ---
 
-<Base title="Flagged messages">
-  <nav class="admin-nav" aria-label="Admin">
-    <a href={url("/admin")}>Review queue</a>
-    <a href={url("/admin/flags")} aria-current="page">Flagged messages</a>
-  </nav>
-  <h1 class="page-title">Flagged messages</h1>
-  <p class="lede">Messages that look like common scams. They were delivered. Check the conversation and act if needed.</p>
+<Base title="Flagged messages and offers">
+  <AdminNav current="flags" />
+  <h1 class="page-title">Flagged messages and offers</h1>
+  <p class="lede">
+    Messages and offer notes that look like common scams. They were delivered, but emails never quote them. Read them, then
+    mark them reviewed, hide a message so neither member sees it, or suspend the sender to stop them messaging and making
+    offers.
+  </p>
   {Astro.url.searchParams.get("done") && <Notice tone="ok"><p>Marked as reviewed.</p></Notice>}
+  {Astro.url.searchParams.get("hidden") && <Notice tone="ok"><p>Message hidden. Neither member can see it now.</p></Notice>}
+  {result && (result.ok ? <Notice tone="ok"><p>{result.message}</p></Notice> : <Notice tone="error"><p>{result.error}</p></Notice>)}
+  <h2 class="section-title">Messages</h2>
   {
     rows.length === 0 ? (
-      <p class="muted">Nothing flagged right now.</p>
+      <p class="muted">No flagged messages right now.</p>
     ) : (
       <ul class="flags">
         {rows.map((r) => (
@@ -55,7 +125,7 @@ const rows = await db
             <p class="body">{r.message.body}</p>
             <p class="meta">
               From <strong>{r.sender ?? "Member"}</strong> ({r.message.senderId === r.thread.buyerId ? "buyer" : "seller"}) about the{" "}
-              {listingTitle(r.listing)}
+              <a href={url(`/admin/listings/${r.listing.id}`)}>{listingTitle(r.listing)}</a>
             </p>
             <div class="actions">
               <a class="btn btn--secondary" href={url(`/inbox/${r.thread.id}`)}>Open conversation</a>
@@ -63,6 +133,51 @@ const rows = await db
                 <input type="hidden" name="messageId" value={r.message.id} />
                 <button class="btn btn--secondary" type="submit">Mark reviewed</button>
               </form>
+              <form method="post">
+                <input type="hidden" name="intent" value="hide" />
+                <input type="hidden" name="messageId" value={r.message.id} />
+                <button class="btn btn--secondary" type="submit">Hide message</button>
+              </form>
+              {r.senderRole !== "admin" && (
+                <form method="post" onsubmit="return confirm('Suspend this sender? They are signed out, their listings are taken down, their open offers end and their unread flagged messages are hidden.')">
+                  <input type="hidden" name="intent" value="suspend" />
+                  <input type="hidden" name="userId" value={r.message.senderId} />
+                  <button class="btn" type="submit">Suspend sender</button>
+                </form>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  <h2 class="section-title">Offer notes</h2>
+  {
+    offerFlags.length === 0 ? (
+      <p class="muted">No flagged offer notes right now.</p>
+    ) : (
+      <ul class="flags">
+        {offerFlags.map((r) => (
+          <li class="card">
+            <p class="label">{r.offer.flagReason}</p>
+            <p class="body">{r.offer.message}</p>
+            <p class="meta">
+              {r.kind === "offer" ? "Offer" : "Counter offer"} of {formatPrice(r.offer.amount)} from <strong>{r.senderName}</strong>{" "}
+              ({r.kind === "offer" ? "buyer" : "seller"}) on the{" "}
+              <a href={url(`/admin/listings/${r.listing.id}`)}>{listingTitle(r.listing)}</a>
+            </p>
+            <div class="actions">
+              <form method="post">
+                <input type="hidden" name="offerId" value={r.offer.id} />
+                <button class="btn btn--secondary" type="submit">Mark reviewed</button>
+              </form>
+              {!r.senderIsAdmin && (
+                <form method="post" onsubmit="return confirm('Suspend this sender? They are signed out, their listings are taken down, their open offers end and their unread flagged messages are hidden.')">
+                  <input type="hidden" name="intent" value="suspend" />
+                  <input type="hidden" name="userId" value={r.senderId} />
+                  <button class="btn" type="submit">Suspend sender</button>
+                </form>
+              )}
             </div>
           </li>
         ))}
@@ -72,22 +187,9 @@ const rows = await db
 </Base>
 
 <style>
-  .admin-nav {
-    display: flex;
-    gap: 18px;
-    margin-bottom: 16px;
-    font-weight: 700;
-  }
-  .admin-nav a {
-    color: var(--muted);
-    text-decoration: none;
-    min-height: var(--tap);
-    display: inline-flex;
-    align-items: center;
-  }
-  .admin-nav a[aria-current] {
-    color: var(--ink);
-    box-shadow: inset 0 -3px 0 var(--red);
+  .section-title {
+    margin-top: 28px;
+    max-width: 760px;
   }
   .flags {
     list-style: none;

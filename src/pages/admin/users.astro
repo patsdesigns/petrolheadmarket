@@ -1,0 +1,246 @@
+---
+import Base from "../../layouts/Base.astro";
+import AdminNav from "../../components/AdminNav.astro";
+import Notice from "../../components/Notice.astro";
+import { url } from "../../lib/paths";
+import { emailConfigured, isAdminEmail } from "../../lib/config";
+import { adminResetLink, confirmEmail, searchUsers, suspendUser, unsuspendUser, type AdminResult } from "../../lib/admin-users";
+
+// Middleware already limits /app/admin to admins; check again here.
+const admin = Astro.locals.user!;
+if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
+
+let q = (Astro.url.searchParams.get("q") ?? "").trim().slice(0, 100);
+let result: (AdminResult & { link?: string; email?: string }) | null = null;
+// While email is off, members who forget their password ask the team (the
+// Contact the team form), and an admin sends them a reset link himself.
+const emailOn = emailConfigured();
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const intent = String(form.get("intent") ?? "");
+  const userId = String(form.get("userId") ?? "").slice(0, 64);
+  q = String(form.get("q") ?? q).trim().slice(0, 100);
+  if (intent === "confirm") result = await confirmEmail(admin.id, userId);
+  else if (intent === "suspend") result = await suspendUser(admin.id, userId);
+  else if (intent === "unsuspend") result = await unsuspendUser(admin.id, userId);
+  else if (intent === "reset-link" && !emailOn) result = await adminResetLink(admin.id, userId);
+  else result = { ok: false, error: "Unknown action." };
+  if (!result.ok) Astro.response.status = 400;
+}
+
+const rows = await searchUsers(q);
+const fmtDate = (d: Date | null) =>
+  d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+---
+
+<Base title="Users">
+  <AdminNav current="users" />
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Users</h1>
+      <p class="lede">
+        {q ? `${rows.length === 50 ? "First 50" : rows.length} ${rows.length === 1 ? "match" : "matches"} for "${q}".` : "Newest 50 accounts. Search by email or name."}
+      </p>
+    </div>
+  </div>
+
+  {
+    result && result.ok && result.link ? (
+      <Notice tone="ok">
+        <p>
+          Reset link for {result.email}. Send it from your own email to that address only. It works for one hour and
+          signs them out everywhere once used.
+        </p>
+        <p><input class="link-box" type="text" readonly value={result.link} aria-label="Reset link" onfocus="this.select()" /></p>
+        <p>
+          <a href={`mailto:${result.email}?subject=${encodeURIComponent("Reset your Petrol Head Market password")}&body=${encodeURIComponent(`Here is a link to choose a new password. It works for one hour.\n\n${result.link}`)}`}>
+            Email it to them
+          </a>
+        </p>
+      </Notice>
+    ) : result ? (
+      result.ok ? <Notice tone="ok"><p>{result.message}</p></Notice> : <Notice tone="error"><p>{result.error}</p></Notice>
+    ) : null
+  }
+
+  <form class="search" method="get" role="search">
+    <label class="sr-only" for="q">Email or name</label>
+    <input id="q" name="q" type="search" value={q} maxlength={100} placeholder="Email or name" autocomplete="off" />
+    <button class="btn btn--secondary" type="submit">Search</button>
+    {q && <a class="clear" href={url("/admin/users")}>Clear</a>}
+  </form>
+
+  {
+    rows.length === 0 ? (
+      <p class="muted">No accounts match. Try part of the email address.</p>
+    ) : (
+      <table class="table users">
+        <thead>
+          <tr>
+            <th scope="col">Person</th>
+            <th scope="col">Email</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="num">Listings</th>
+            <th scope="col" class="num">Joined</th>
+            <th scope="col"><span class="sr-only">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const adminAddress = isAdminEmail(r.email);
+            const canSuspend = !adminAddress && r.id !== admin.id && r.role !== "admin";
+            return (
+              <tr>
+                <td>
+                  <strong>{r.name}</strong>
+                  {r.displayName && r.displayName !== r.name && <span class="sub">Shows as {r.displayName}</span>}
+                </td>
+                <td data-label="Email" class="email">{r.email}</td>
+                <td data-label="Status">
+                  <span class="badges">
+                    {r.emailVerified ? <span class="badge badge--ok">Confirmed</span> : <span class="badge">Not confirmed</span>}
+                    {r.role === "admin" && <span class="badge">Admin</span>}
+                    {r.suspendedAt && <span class="badge badge--red">Suspended {fmtDate(r.suspendedAt)}</span>}
+                  </span>
+                </td>
+                <td data-label="Listings" class="num">
+                  {r.listingsTotal > 0 ? (
+                    <a href={`${url("/admin/listings")}?q=${encodeURIComponent(r.email)}`}>
+                      {r.listingsTotal} ({r.listingsLive} live)
+                    </a>
+                  ) : (
+                    "0"
+                  )}
+                </td>
+                <td data-label="Joined" class="num">{fmtDate(r.createdAt)}</td>
+                <td class="acts"><div class="acts__in">
+                  {!r.emailVerified && !adminAddress && (
+                    <form method="post">
+                      <input type="hidden" name="intent" value="confirm" />
+                      <input type="hidden" name="userId" value={r.id} />
+                      <input type="hidden" name="q" value={q} />
+                      <button class="btn btn--secondary" type="submit">Mark email as confirmed</button>
+                    </form>
+                  )}
+                  {!emailOn && !adminAddress && !r.suspendedAt && r.id !== admin.id && (
+                    <form method="post">
+                      <input type="hidden" name="intent" value="reset-link" />
+                      <input type="hidden" name="userId" value={r.id} />
+                      <input type="hidden" name="q" value={q} />
+                      <button class="btn btn--secondary" type="submit">Get a reset link</button>
+                    </form>
+                  )}
+                  {canSuspend && r.suspendedAt && (
+                    <form method="post">
+                      <input type="hidden" name="intent" value="unsuspend" />
+                      <input type="hidden" name="userId" value={r.id} />
+                      <input type="hidden" name="q" value={q} />
+                      <button class="btn btn--secondary" type="submit">Unsuspend</button>
+                    </form>
+                  )}
+                  {canSuspend && !r.suspendedAt && (
+                    <form method="post" onsubmit="return confirm('Suspend this account? They are signed out, their listings are taken down, their open offers end and their unread flagged messages are hidden.')">
+                      <input type="hidden" name="intent" value="suspend" />
+                      <input type="hidden" name="userId" value={r.id} />
+                      <input type="hidden" name="q" value={q} />
+                      <button class="btn" type="submit">Suspend</button>
+                    </form>
+                  )}
+                </div></td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    )
+  }
+  <p class="muted note">
+    Suspending signs the person out, blocks sign in, takes their listings off the site and ends their open offers.
+    Unsuspending lets them sign in again; taken down listings stay down. Every action is logged.
+  </p>
+</Base>
+
+<style>
+  .search {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+    max-width: 640px;
+  }
+  .search input {
+    flex: 1 1 240px;
+    min-width: 0;
+    min-height: var(--tap);
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-btn);
+    background: var(--white);
+    font: inherit;
+    font-size: 16px;
+  }
+  .clear {
+    color: var(--muted);
+  }
+  .link-box {
+    width: 100%;
+    min-height: var(--tap);
+    padding: 8px 10px;
+    font: 13px/1.4 var(--font-mono);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-btn);
+    background: var(--white);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .users strong {
+    display: block;
+  }
+  .sub {
+    display: block;
+    color: var(--muted);
+    font-size: 14px;
+  }
+  .email {
+    overflow-wrap: anywhere;
+  }
+  .badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .acts__in {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .acts form {
+    margin: 0;
+  }
+  .acts .btn {
+    padding: 8px 14px;
+    font-size: 14px;
+  }
+  @media (max-width: 720px) {
+    .acts__in {
+      justify-content: flex-start;
+      padding-top: 6px;
+    }
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .note {
+    margin-top: 20px;
+    font-size: 14px;
+    max-width: 760px;
+  }
+</style>

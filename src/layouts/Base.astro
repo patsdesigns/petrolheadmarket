@@ -30,7 +30,7 @@ const fullTitle = title ? `${title} | Petrol Head Market` : "Petrol Head Market"
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>
-    <Header user={Astro.locals.profile ? { displayName: Astro.locals.profile.displayName, isAdmin: Astro.locals.profile.role === "admin" } : null} unread={Astro.locals.unread} />
+    <Header user={Astro.locals.profile ? { displayName: Astro.locals.profile.displayName, isAdmin: Astro.locals.profile.role === "admin" } : null} unread={Astro.locals.unread} adminTodo={Astro.locals.adminCounts ? Astro.locals.adminCounts.review + Astro.locals.adminCounts.contact + Astro.locals.adminCounts.flags : 0} />
     <main id="main">
       <div class="container">
         <slot />
