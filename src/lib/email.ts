@@ -1,4 +1,7 @@
 import { env } from "cloudflare:workers";
+import { emailConfigured, isAdminEmail, supportEmail } from "./config";
+
+export { emailConfigured };
 
 interface Email {
   to: string;
@@ -6,6 +9,12 @@ interface Email {
   /** Plain paragraphs. Each string is escaped and becomes one paragraph. */
   paragraphs: string[];
   action?: { label: string; url: string };
+  /**
+   * Only the password reset sets this. With email off, it lets the full text
+   * (with the link) go to the log when the recipient is in ADMIN_EMAILS, so
+   * the owner can prove his address. Confirmation links never go to the log.
+   */
+  adminBootstrap?: boolean;
 }
 
 function escapeHtml(s: string): string {
@@ -39,16 +48,34 @@ function renderText({ paragraphs, action }: Email): string {
   return [...paragraphs, action ? `${action.label}: ${action.url}` : ""].filter(Boolean).join("\n\n");
 }
 
+/** "dave@example.com" -> "example.com". Logs never carry full addresses. */
+function domainOf(address: string): string {
+  return address.split("@").pop() || "unknown";
+}
+
 /**
- * Send a transactional email through Resend. Without RESEND_API_KEY (local
- * development) the email is logged instead so flows can still be tested.
+ * Send a transactional email through Resend. Returns true when Resend
+ * accepted it and false when email is not switched on (no RESEND_API_KEY).
+ *
+ * Without a key nothing is delivered. The log gets only the recipient's
+ * domain and the subject, never links, tokens or bodies. The one exception
+ * is the password reset to an ADMIN_EMAILS address, which is logged in full
+ * so the owner can reset (and so confirm, or take back) his own account from
+ * the Webflow Cloud log while email is off. Every other email to an admin is
+ * logged like any other (it can hold contact details or message text).
  */
-export async function sendEmail(email: Email): Promise<void> {
-  if (!env.RESEND_API_KEY) {
-    console.log(`[email] to=${email.to} subject="${email.subject}"\n${renderText(email)}`);
-    return;
+export async function sendEmail(email: Email): Promise<boolean> {
+  if (!emailConfigured()) {
+    if (email.adminBootstrap && isAdminEmail(email.to)) {
+      console.log(`[email] not sent (email is off), admin copy subject="${email.subject}"\n${renderText(email)}`);
+    } else {
+      console.log(`[email] not sent (email is off) to=@${domainOf(email.to)} subject="${email.subject}"`);
+    }
+    return false;
   }
-  const res = await fetch("https://api.resend.com/emails", {
+  const replyTo = supportEmail();
+  // RESEND_API_BASE is only for local tests against a fake API. Leave it unset.
+  const res = await fetch(`${env.RESEND_API_BASE || "https://api.resend.com"}/emails`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${env.RESEND_API_KEY}`,
@@ -57,13 +84,16 @@ export async function sendEmail(email: Email): Promise<void> {
     body: JSON.stringify({
       from: env.EMAIL_FROM || "Petrol Head Market <onboarding@resend.dev>",
       to: [email.to],
+      ...(replyTo ? { reply_to: replyTo } : {}),
       subject: email.subject,
       html: renderHtml(email),
       text: renderText(email),
     }),
   });
   if (!res.ok) {
-    console.error(`[email] Resend error ${res.status}: ${await res.text()}`);
+    // Status only: Resend's error text can repeat the recipient's address.
+    console.error(`[email] Resend error ${res.status} to=@${domainOf(email.to)} subject="${email.subject}"`);
     throw new Error("Email could not be sent");
   }
+  return true;
 }

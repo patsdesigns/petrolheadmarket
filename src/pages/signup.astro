@@ -6,8 +6,12 @@ import Notice from "../components/Notice.astro";
 import { url } from "../lib/paths";
 import { emailField, parseForm, passwordField, safeNext } from "../lib/forms";
 import { callAuth, friendlyAuthError, redirectWithCookies } from "../lib/auth-call";
+import { emailConfigured } from "../lib/config";
+import { NAME_PATTERN } from "../lib/profile";
+import { verifySendFailures } from "../lib/auth";
 
 const next = safeNext(Astro.url.searchParams.get("next"));
+const emailOn = emailConfigured();
 const nextQuery = Astro.url.searchParams.get("next") ? `?next=${encodeURIComponent(next)}` : "";
 
 let errors: Record<string, string> = {};
@@ -18,7 +22,12 @@ if (Astro.request.method === "POST") {
   const parsed = await parseForm(
     Astro.request,
     z.object({
-      name: z.string().trim().min(2, "Enter your name.").max(80, "Use 80 characters or fewer."),
+      name: z
+        .string()
+        .trim()
+        .min(2, "Enter your name.")
+        .max(80, "Use 80 characters or fewer.")
+        .regex(NAME_PATTERN, "Use letters, spaces, apostrophes, hyphens and periods only."),
       email: emailField,
       password: passwordField,
     }),
@@ -34,7 +43,14 @@ if (Astro.request.method === "POST") {
       callbackURL: `${url("/verify-email")}?verified=1&next=${encodeURIComponent(next)}`,
     });
     if (result.ok) {
-      return redirectWithCookies(`${url("/verify-email")}?sent=1&next=${encodeURIComponent(next)}`, result.cookies);
+      // With email off no link was sent, so go straight on. Admin addresses
+      // get no special treatment here, so signing up never reveals whether
+      // an address is on the admin list.
+      // sent=1 only when the link really went out (the verify page only
+      // says "We sent a link" then).
+      const failed = verifySendFailures.delete(parsed.data.email.toLowerCase());
+      const to = emailOn ? `${url("/verify-email")}?${failed ? "" : "sent=1&"}next=${encodeURIComponent(next)}` : next;
+      return redirectWithCookies(to, result.cookies);
     }
     formError = friendlyAuthError(result);
     Astro.response.status = result.status === 429 ? 429 : 400;
@@ -42,7 +58,10 @@ if (Astro.request.method === "POST") {
 }
 ---
 
-<AuthLayout title="Create an account" lede="Free to join. You will confirm your email before listing a car or contacting a seller.">
+<AuthLayout
+  title="Create an account"
+  lede={emailOn ? "Free to join. You will confirm your email before listing a car or contacting a seller." : "Free to join."}
+>
   {formError && <Notice tone="error"><p>{formError}</p></Notice>}
   <form method="post" novalidate>
     <Field name="name" label="Your name" autocomplete="name" value={values.name} error={errors.name} maxlength={80}

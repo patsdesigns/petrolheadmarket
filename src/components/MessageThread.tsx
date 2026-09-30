@@ -6,6 +6,7 @@ interface Msg {
   body: string;
   createdAt: string;
   read: boolean;
+  hidden?: boolean;
 }
 
 interface Props {
@@ -19,7 +20,15 @@ interface Props {
 const POLL_MS = 15000;
 
 function time(iso: string) {
-  return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  // A fixed zone (like the inbox list and admin pages), so the server render
+  // and the browser produce the same text and hydration matches.
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "America/Los_Angeles",
+  });
 }
 
 export default function MessageThread({ endpoint, initial, otherName, canReply, maxLength }: Props) {
@@ -74,7 +83,10 @@ export default function MessageThread({ endpoint, initial, otherName, canReply, 
       <ol className="mt__list" aria-live="polite">
         {msgs.map((m) => (
           <li key={m.id} className={m.mine ? "mt__msg is-mine" : "mt__msg"}>
-            <span className="mt__who">{m.mine ? "You" : otherName}</span>
+            <span className="mt__who">
+              {m.mine ? "You" : otherName}
+              {m.hidden ? " · Hidden by an admin" : ""}
+            </span>
             <p className="mt__body">{m.body}</p>
             <span className="mt__time">
               {time(m.createdAt)}

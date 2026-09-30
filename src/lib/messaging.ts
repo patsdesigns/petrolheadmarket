@@ -1,11 +1,13 @@
-import { and, count, desc, eq, inArray, isNull, ne, or } from "drizzle-orm";
+import { and, count, desc, eq, isNull, ne, or, sql } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { listings, messages, profiles, threads, user as users, type Listing, type Thread } from "../db/schema";
+import { listings, messages, offers, profiles, threads, user as users, type Listing, type Thread } from "../db/schema";
 import { absoluteUrl } from "./config";
 import { sendEmail } from "./email";
 import { listingTitle } from "./listing-rules";
 import { url } from "./paths";
 import { messageRateLimited } from "./rate-limit";
+import { isSuspended } from "./profile";
+import { safeError } from "./log";
 
 export const MAX_MESSAGE = 2000;
 
@@ -48,18 +50,20 @@ export async function getThreadForUser(threadId: string, userId: string, isAdmin
   return { thread, listing, participant };
 }
 
-export async function threadMessages(threadId: string) {
+/** Messages in a thread. Hidden messages are left out unless an admin is reading. */
+export async function threadMessages(threadId: string, includeHidden = false) {
   return getDb()
     .select({
       id: messages.id,
       senderId: messages.senderId,
       body: messages.body,
       flagged: messages.flagged,
+      hiddenAt: messages.hiddenAt,
       readAt: messages.readAt,
       createdAt: messages.createdAt,
     })
     .from(messages)
-    .where(eq(messages.threadId, threadId))
+    .where(includeHidden ? eq(messages.threadId, threadId) : and(eq(messages.threadId, threadId), isNull(messages.hiddenAt)))
     .orderBy(messages.createdAt)
     .all();
 }
@@ -82,6 +86,7 @@ export async function unreadCount(userId: string): Promise<number> {
         or(eq(threads.buyerId, userId), eq(threads.sellerId, userId)),
         ne(messages.senderId, userId),
         isNull(messages.readAt),
+        isNull(messages.hiddenAt),
       ),
     )
     .get();
@@ -91,18 +96,35 @@ export async function unreadCount(userId: string): Promise<number> {
 export type SendResult = { ok: true; threadId: string; flagged: boolean } | { ok: false; error: string };
 
 /**
+ * A seller writing to a buyer who made an offer: the offer and its listing,
+ * only when the listing is the seller's own. The thread may not exist yet.
+ */
+export async function offerForSeller(offerId: string, sellerId: string) {
+  const db = getDb();
+  const offer = await db.select().from(offers).where(eq(offers.id, offerId)).get();
+  if (!offer) return null;
+  const listing = await db.select().from(listings).where(eq(listings.id, offer.listingId)).get();
+  if (!listing || listing.userId !== sellerId || offer.buyerId === sellerId) return null;
+  const buyer = await db.select().from(profiles).where(eq(profiles.userId, offer.buyerId)).get();
+  return { offer, listing, buyerName: buyer?.displayName ?? "the buyer", thread: await getThreadFor(listing.id, offer.buyerId) };
+}
+
+/**
  * Send a message. Buyers start a thread from a listing (one thread per
- * listing per buyer); after that either side can reply in the thread.
+ * listing per buyer), sellers start one from an offer they received; after
+ * that either side can reply in the thread.
  */
 export async function sendMessage(opts: {
   senderId: string;
   body: string;
   listing?: Listing; // when a buyer starts or continues from a listing
   threadId?: string; // when replying in an existing thread
+  offerId?: string; // when a seller writes to a buyer who made an offer
 }): Promise<SendResult> {
   const body = opts.body.trim();
   if (!body) return { ok: false, error: "Write a message first." };
   if (body.length > MAX_MESSAGE) return { ok: false, error: `Keep messages under ${MAX_MESSAGE} characters.` };
+  if (await isSuspended(opts.senderId)) return { ok: false, error: "Your account is suspended." };
   if (await messageRateLimited(opts.senderId)) {
     return { ok: false, error: "You are sending messages very quickly. Wait a few minutes and try again." };
   }
@@ -117,6 +139,21 @@ export async function sendMessage(opts: {
       return { ok: false, error: "Conversation not found." };
     }
     listing = await db.select().from(listings).where(eq(listings.id, thread.listingId)).get();
+  } else if (opts.offerId) {
+    const found = await offerForSeller(opts.offerId, opts.senderId);
+    if (!found) return { ok: false, error: "Conversation not found." };
+    listing = found.listing;
+    thread = found.thread;
+    if (!thread) {
+      // Created with the first message, so no empty conversations appear.
+      thread = await db
+        .insert(threads)
+        .values({ id: crypto.randomUUID(), listingId: listing.id, buyerId: found.offer.buyerId, sellerId: listing.userId })
+        .onConflictDoNothing()
+        .returning()
+        .get();
+      thread ??= await getThreadFor(listing.id, found.offer.buyerId);
+    }
   } else if (listing) {
     if (listing.userId === opts.senderId) return { ok: false, error: "This is your own listing." };
     thread = await getThreadFor(listing.id, opts.senderId);
@@ -131,6 +168,11 @@ export async function sendMessage(opts: {
     }
   }
   if (!thread || !listing) return { ok: false, error: "Conversation not found." };
+  // A listing taken down (or rejected) is closed to messages, so a removed
+  // scam listing can't keep talking to buyers.
+  if (!["live", "offer_accepted", "sold"].includes(listing.status)) {
+    return { ok: false, error: "This listing is no longer on the site, so the conversation is closed." };
+  }
 
   const recipientId = thread.buyerId === opts.senderId ? thread.sellerId : thread.buyerId;
   // Only email for the first unread message, so a burst of messages sends one email.
@@ -163,16 +205,18 @@ export async function sendMessage(opts: {
     ]);
     if (recipient && (recipientProfile?.emailNotifications ?? true)) {
       const preview = body.length > 140 ? `${body.slice(0, 140).trim()}…` : body;
+      const name = senderProfile?.displayName ?? "Someone";
+      // A flagged message is never quoted, so a scam pitch doesn't land in
+      // an inbox before an admin has seen it (the same as offer notes).
+      const lines = flagReason
+        ? [`${name} sent you a message. Read it on Petrol Head Market.`]
+        : [`${name} wrote:`, `"${preview}"`];
       await sendEmail({
         to: recipient.email,
         subject: `New message about the ${listingTitle(listing)}`,
-        paragraphs: [
-          `${senderProfile?.displayName ?? "Someone"} wrote:`,
-          `"${preview}"`,
-          "Reply on Petrol Head Market. Your email address stays private.",
-        ],
+        paragraphs: [...lines, "Reply on Petrol Head Market. Your email address stays private."],
         action: { label: "Read and reply", url: absoluteUrl(url(`/inbox/${thread.id}`)) },
-      }).catch((err) => console.error("[messages] email failed", err));
+      }).catch((err) => console.error("[messages] email failed", safeError(err)));
     }
   }
 
@@ -192,46 +236,36 @@ export interface InboxRow {
 
 export async function inboxFor(userId: string): Promise<InboxRow[]> {
   const db = getDb();
+  // One statement with a few bound parameters, whatever the thread count
+  // (D1 caps a statement at 100), and no full message histories.
+  const otherId = sql`CASE WHEN ${threads.buyerId} = ${userId} THEN ${threads.sellerId} ELSE ${threads.buyerId} END`;
   const rows = await db
-    .select({ thread: threads, listing: listings })
+    .select({
+      thread: threads,
+      listing: listings,
+      otherName: profiles.displayName,
+      lastBody: sql<string | null>`(SELECT m.body FROM messages m WHERE m.thread_id = ${threads.id} AND m.hidden_at IS NULL ORDER BY m.created_at DESC LIMIT 1)`,
+      unread: sql<number>`(SELECT count(*) FROM messages m WHERE m.thread_id = ${threads.id} AND m.sender_id <> ${userId} AND m.read_at IS NULL AND m.hidden_at IS NULL)`,
+    })
     .from(threads)
     .innerJoin(listings, eq(listings.id, threads.listingId))
+    .leftJoin(profiles, eq(profiles.userId, otherId))
     .where(or(eq(threads.buyerId, userId), eq(threads.sellerId, userId)))
     .orderBy(desc(threads.lastMessageAt))
     .limit(200)
     .all();
-  if (rows.length === 0) return [];
 
-  const ids = rows.map((r) => r.thread.id);
-  const otherIds = [...new Set(rows.map((r) => (r.thread.buyerId === userId ? r.thread.sellerId : r.thread.buyerId)))];
-  const names = new Map(
-    (await db.select().from(profiles).where(inArray(profiles.userId, otherIds)).all()).map((p) => [p.userId, p.displayName]),
-  );
-  const msgs = await db
-    .select({ threadId: messages.threadId, senderId: messages.senderId, body: messages.body, readAt: messages.readAt })
-    .from(messages)
-    .where(inArray(messages.threadId, ids))
-    .orderBy(messages.createdAt)
-    .all();
-  const last = new Map<string, string>();
-  const unread = new Map<string, number>();
-  for (const m of msgs) {
-    last.set(m.threadId, m.body);
-    if (m.senderId !== userId && !m.readAt) unread.set(m.threadId, (unread.get(m.threadId) ?? 0) + 1);
-  }
-
-  return rows.map(({ thread, listing }) => {
-    const otherId = thread.buyerId === userId ? thread.sellerId : thread.buyerId;
-    const body = last.get(thread.id) ?? "";
+  return rows.map(({ thread, listing, otherName, lastBody, unread }) => {
+    const body = lastBody ?? "";
     return {
       id: thread.id,
       listingTitle: listingTitle(listing),
       listingId: listing.id,
-      otherName: names.get(otherId) ?? "Member",
+      otherName: otherName ?? "Member",
       role: thread.buyerId === userId ? "buyer" : "seller",
       lastMessageAt: thread.lastMessageAt,
       preview: body.length > 90 ? `${body.slice(0, 90)}…` : body,
-      unread: unread.get(thread.id) ?? 0,
+      unread: Number(unread ?? 0),
     };
   });
 }

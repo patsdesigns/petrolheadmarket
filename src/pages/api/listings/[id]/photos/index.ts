@@ -34,8 +34,10 @@ export const GET: APIRoute = async ({ locals, params }) => {
   const key = params.id ?? "";
   if (!UUID.test(key)) {
     const found = await getPublicListing(key);
-    if (!found) return jsonError("Listing not found.", 404);
-    const photos = await getPhotos(found.listing.id);
+    // Listings that are not in the app (the Webflow sample listings) answer with an empty
+    // list rather than a 404, so the site's gallery script does nothing and the browser
+    // console stays clean on those pages.
+    const photos = found ? await getPhotos(found.listing.id) : [];
     return new Response(
       JSON.stringify({
         slug: key,

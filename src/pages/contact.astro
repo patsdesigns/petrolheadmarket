@@ -1,0 +1,130 @@
+---
+import { z } from "zod";
+import AuthLayout from "../layouts/AuthLayout.astro";
+import Field from "../components/Field.astro";
+import Notice from "../components/Notice.astro";
+import { url, siteUrl } from "../lib/paths";
+import { emailField, parseForm } from "../lib/forms";
+import { CONTACT_TOPICS, createContactRequest, isContactTopic } from "../lib/contact";
+
+// Contact the team. Open to everyone, signed in or not (a suspended member
+// or someone locked out of their account needs it too). Messages are stored
+// in D1 and read on /app/admin/contact, so this works with email off.
+const user = Astro.locals.user;
+const profile = Astro.locals.profile;
+const params = Astro.url.searchParams;
+const topicParam = params.get("topic");
+const listingParam = (params.get("listing") ?? "").slice(0, 64) || null;
+
+let errors: Record<string, string> = {};
+let values: Record<string, string> = { topic: isContactTopic(topicParam) ? topicParam : "other" };
+let formError = "";
+let sentTo = "";
+
+if (Astro.request.method === "POST") {
+  const parsed = await parseForm(
+    Astro.request,
+    z.object({
+      topic: z.string().refine(isContactTopic, "Pick what this is about."),
+      listing: z.string().max(64).optional(),
+      name: user ? z.string().optional() : z.string().trim().min(2, "Enter your name.").max(80, "Use 80 characters or fewer."),
+      email: user ? z.string().optional() : emailField,
+      body: z
+        .string()
+        .trim()
+        .min(20, "Tell us a little more, at least 20 characters.")
+        .max(2000, "Use 2,000 characters or fewer."),
+      // A field people never see. Only bots fill it in.
+      website: z.string().max(200).optional(),
+    }),
+  );
+  values = parsed.values;
+  if (!parsed.ok) {
+    errors = parsed.errors;
+    Astro.response.status = 400;
+  } else if (parsed.data.website) {
+    sentTo = user?.email ?? parsed.data.email ?? "you";
+  } else {
+    const email = user ? user.email : parsed.data.email!;
+    const result = await createContactRequest(Astro.request, {
+      userId: user?.id ?? null,
+      name: user ? (profile?.displayName ?? user.name) : parsed.data.name!,
+      email,
+      topic: parsed.data.topic as keyof typeof CONTACT_TOPICS,
+      listingId: parsed.data.listing || null,
+      body: parsed.data.body,
+    });
+    if (result.ok) sentTo = email;
+    else {
+      formError = result.error;
+      Astro.response.status = 429;
+    }
+  }
+}
+const listingId = values.listing ?? listingParam ?? "";
+---
+
+<AuthLayout title="Contact the team" lede={sentTo ? undefined : "A person on our team reads every message and replies by email."}>
+  {
+    sentTo ? (
+      <>
+        <Notice tone="ok">
+          <p>Thanks. Your message reached our team. We will reply by email to {sentTo}.</p>
+        </Notice>
+        <a class="btn btn--secondary" href={user ? url("/") : siteUrl("/")}>{user ? "Back to My garage" : "Back to the Lot"}</a>
+      </>
+    ) : (
+      <>
+        {formError && <Notice tone="error"><p>{formError}</p></Notice>}
+        <form method="post" novalidate>
+          <div class="field">
+            <label for="f-topic">What is it about?</label>
+            <select id="f-topic" name="topic">
+              {Object.entries(CONTACT_TOPICS).map(([key, label]) => (
+                <option value={key} selected={values.topic === key}>{label}</option>
+              ))}
+            </select>
+            {errors.topic && <span class="error">{errors.topic}</span>}
+          </div>
+          {listingId && <input type="hidden" name="listing" value={listingId} />}
+          {user ? (
+            <p class="muted">We will reply to {user.email}.</p>
+          ) : (
+            <>
+              <Field name="name" label="Your name" autocomplete="name" value={values.name} error={errors.name} maxlength={80} />
+              <Field name="email" label="Your email" type="email" inputmode="email" autocomplete="email" value={values.email}
+                error={errors.email} maxlength={254} hint="We reply here. It is never shown to anyone else." />
+            </>
+          )}
+          <div class="field">
+            <label for="f-body">Your message</label>
+            <textarea id="f-body" name="body" maxlength={2000} required
+              aria-invalid={errors.body ? "true" : undefined}
+              aria-describedby={errors.body ? "f-body-error" : "f-body-hint"}>{values.body ?? ""}</textarea>
+            <span class="hint" id="f-body-hint">For a listing, say what should change and what it should say instead.</span>
+            {errors.body && <span class="error" id="f-body-error">{errors.body}</span>}
+          </div>
+          <div class="hp" aria-hidden="true">
+            <label for="f-website">Leave this empty</label>
+            <input id="f-website" name="website" tabindex="-1" autocomplete="off" />
+          </div>
+          <button class="btn" type="submit">Send message</button>
+        </form>
+      </>
+    )
+  }
+</AuthLayout>
+
+<style>
+  .muted {
+    color: var(--muted);
+    margin: 0 0 18px;
+  }
+  .hp {
+    position: absolute;
+    left: -10000px;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+  }
+</style>

@@ -1,0 +1,65 @@
+---
+// Tabs across the top of every admin page.
+import { url } from "../lib/paths";
+import { scheduleCmsRetry } from "../lib/cms";
+
+interface Props {
+  current: "queue" | "listings" | "users" | "flags" | "contact";
+}
+const { current } = Astro.props;
+// Every admin page nudges the lazy CMS retry (throttled to once a minute).
+if (Astro.request.method === "GET") await scheduleCmsRetry();
+const counts = Astro.locals.adminCounts;
+const tabs = [
+  { key: "queue", label: "Review queue", href: url("/admin"), n: counts?.review ?? 0, what: "waiting for review" },
+  { key: "listings", label: "Listings", href: url("/admin/listings"), n: 0, what: "" },
+  { key: "users", label: "Users", href: url("/admin/users"), n: 0, what: "" },
+  { key: "flags", label: "Flagged", href: url("/admin/flags"), n: counts?.flags ?? 0, what: "not reviewed" },
+  { key: "contact", label: "Contact", href: url("/admin/contact"), n: counts?.contact ?? 0, what: "open" },
+] as const;
+---
+
+<nav class="admin-nav" aria-label="Admin">
+  {
+    tabs.map((t) => (
+      <a href={t.href} aria-current={t.key === current ? "page" : undefined}>
+        {t.label}
+        {t.n > 0 && <span class="n" aria-label={`${t.n} ${t.what}`}>{t.n}</span>}
+      </a>
+    ))
+  }
+</nav>
+
+<style>
+  .admin-nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 18px;
+    margin-bottom: 16px;
+    font-weight: 700;
+  }
+  .admin-nav a {
+    color: var(--muted);
+    text-decoration: none;
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
+  }
+  .n {
+    display: inline-grid;
+    place-items: center;
+    min-width: 18px;
+    height: 18px;
+    margin-left: 6px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--red);
+    color: var(--white);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+  }
+  .admin-nav a[aria-current] {
+    color: var(--ink);
+    box-shadow: inset 0 -3px 0 var(--red);
+  }
+</style>

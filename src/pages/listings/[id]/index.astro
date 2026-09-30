@@ -6,11 +6,15 @@ import { getDb } from "../../../db/client";
 import { listings } from "../../../db/schema";
 import { url, siteUrl } from "../../../lib/paths";
 import { BODY_STYLES, DRIVETRAINS, TITLE_STATUSES, TRANSMISSIONS, STATUS_LABELS, optionLabel } from "../../../lib/listing-options";
-import { formatMiles, formatPrice, listingTitle } from "../../../lib/listing-rules";
-import { deleteDraft, getOwnListing, getPhotos, isEditable, photoView } from "../../../lib/listings";
-import { markSold, quickEdit, relist } from "../../../lib/seller-actions";
+import { formatMiles, formatPrice, listingTitle, titleText } from "../../../lib/listing-rules";
+import { getOwnListing, getPhotos, isEditable, photoView } from "../../../lib/listings";
+import { markSold, quickEdit, relist, resync } from "../../../lib/seller-actions";
+import { DELETABLE_STATUSES, deleteListing, takeDownListing } from "../../../lib/take-down";
 import Field from "../../../components/Field.astro";
 import Check from "../../../components/Check.astro";
+import { emailConfigured, supportEmail } from "../../../lib/config";
+import { contactHref } from "../../../lib/contact";
+import { webflowConfigured } from "../../../lib/webflow";
 
 const user = Astro.locals.user!;
 const id = Astro.params.id!;
@@ -38,9 +42,24 @@ if (Astro.request.method === "POST") {
     if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${r.synced ? intent : "sync_failed=1"}`, 303);
     actionError = r.error ?? "";
   }
+  if (intent === "resync") {
+    const r = await resync(listing);
+    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${r.synced ? "updated=1" : "sync_failed=1"}`, 303);
+    actionError = r.error ?? "";
+  }
+  if (intent === "takedown") {
+    const r = await takeDownListing(listing, user.id, { by: "seller" });
+    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${r.unpublished ? "taken_down=1" : "taken_down=pending"}`, 303);
+    actionError = r.error;
+  }
   if (intent === "delete") {
-    await deleteDraft(user.id, id);
-    return Astro.redirect(`${url("/")}?notice=deleted`, 303);
+    const r = await deleteListing(user.id, id);
+    if (r.ok) {
+      const notice = r.was === "draft" ? "deleted" : r.kept ? "deleted-kept" : "deleted-listing";
+      // The delete buttons on /sell send the seller back there.
+      return Astro.redirect(`${url(posted.back === "sell" ? "/sell" : "/")}?notice=${notice}`, 303);
+    }
+    actionError = r.error;
   }
   if (intent === "unsubmit" && listing.status === "submitted") {
     // Pull it back out of the review queue to make changes.
@@ -57,19 +76,45 @@ const photos = await getPhotos(id);
 const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
 const title = listingTitle(listing);
 const editUrl = url(`/listings/${id}/edit`);
-const publicUrl = listing.slug ? siteUrl(`/listings/${listing.slug}`) : null;
+// Only while it is on the site (approved listings already have a slug saved).
+const publicUrl =
+  listing.slug && listing.cmsItemId && ["live", "offer_accepted", "sold"].includes(listing.status)
+    ? siteUrl(`/listings/${listing.slug}`)
+    : null;
+
+const emailOn = emailConfigured();
+// A mailto to SUPPORT_EMAIL when set, otherwise the Contact the team form.
+const byEmail = Boolean(supportEmail());
+const changeHref = contactHref("listing", { subject: `Change to ${title} (${listing.id})`, listingId: listing.id });
+const questionHref = contactHref("listing", { subject: `Question about ${title} (${listing.id})`, listingId: listing.id });
+const updatesLine = emailOn
+  ? "We will email you when it is live or if anything needs changing."
+  : "Check My garage for updates.";
 
 const explain: Record<string, string> = {
   draft: "Only you can see this draft. Finish the steps and submit it for review.",
-  submitted: "Our team is reviewing your listing. This usually takes less than a day. We will email you.",
+  submitted: `Our team is reviewing your listing. This usually takes less than a day. ${updatesLine}`,
   changes_requested: "Our reviewer asked for a few changes. Update the listing and submit it again.",
-  approved: "Approved. It is being published now.",
+  // Without the Webflow token nothing publishes until the owner sets it, so
+  // only promise "shortly" when publishing is on.
+  approved: webflowConfigured()
+    ? "Approved. It will appear on the Lot shortly."
+    : "Approved. It goes on the Lot as soon as publishing is switched on. Check My garage for updates.",
   live: "Your listing is live on Petrol Head Market.",
   offer_accepted: "You accepted an offer. Mark it as sold when the deal is done.",
   sold: "Sold. Congratulations.",
-  rejected: "This listing was not accepted.",
-  withdrawn: "You took this listing down.",
+  rejected: "This listing was not accepted. You can delete it.",
+  withdrawn: listing.reviewNotes
+    ? "Our team took this listing off the site. It no longer takes offers or messages."
+    : "You took this listing down. It is off the site and no longer takes offers or messages.",
 };
+const inCms = Boolean(listing.cmsItemId) && ["live", "offer_accepted", "sold"].includes(listing.status);
+const canDelete = (DELETABLE_STATUSES as string[]).includes(listing.status);
+const deleteLabel = listing.status === "draft" ? "Delete this draft" : "Delete this listing";
+const deleteConfirm =
+  listing.status === "draft"
+    ? "Delete this draft and its photos? This cannot be undone."
+    : "Delete this listing and its photos? Any messages with buyers stay in your inbox. This cannot be undone.";
 ---
 
 <Base title={title}>
@@ -83,13 +128,28 @@ const explain: Record<string, string> = {
   {listing.headline && <p class="lede">{listing.headline}</p>}
 
   {Astro.url.searchParams.get("submitted") && (
-    <Notice tone="ok"><p>Submitted for review. We will email you when it is live or if anything needs changing.</p></Notice>
+    <Notice tone="ok"><p>Submitted for review. {updatesLine}</p></Notice>
   )}
   {Astro.url.searchParams.get("updated") && <Notice tone="ok"><p>Saved. The public listing is updated.</p></Notice>}
   {Astro.url.searchParams.get("sold") && <Notice tone="ok"><p>Marked as sold. Congratulations.</p></Notice>}
   {Astro.url.searchParams.get("relist") && <Notice tone="ok"><p>Your car is back on sale.</p></Notice>}
-  {Astro.url.searchParams.get("sync_failed") && (
-    <Notice tone="error"><p>Saved here, but the public listing did not update. We have been told and will fix it. You can also try saving again.</p></Notice>
+  {Astro.url.searchParams.get("taken_down") && (
+    <Notice tone="ok"><p>
+      {Astro.url.searchParams.get("taken_down") === "pending"
+        ? "Taken down. Open offers were closed. It will be removed from the Lot shortly."
+        : "Taken down. It is off the Lot and open offers were closed."}
+    </p></Notice>
+  )}
+  {inCms && listing.cmsSyncPending ? (
+    <Notice tone="error">
+      <p>{Astro.url.searchParams.get("sync_failed") ? "Saved here, but the public listing did not update yet." : "The public listing is not up to date yet."} The public listing will update shortly, or use Retry update.</p>
+      <form method="post" class="inline-form">
+        <input type="hidden" name="intent" value="resync" />
+        <button class="btn btn--secondary" type="submit">Retry update</button>
+      </form>
+    </Notice>
+  ) : (
+    Astro.url.searchParams.get("sync_failed") && <Notice tone="error"><p>Saved here, but the public listing did not update yet. Try again in a few minutes.</p></Notice>
   )}
   {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
 
@@ -114,7 +174,7 @@ const explain: Record<string, string> = {
         <div class="fact"><div class="fact__label">Drivetrain</div><div class="fact__val">{optionLabel(DRIVETRAINS, listing.drivetrain) || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">Body</div><div class="fact__val">{optionLabel(BODY_STYLES, listing.bodyStyle) || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">Engine</div><div class="fact__val">{listing.engine || "Not set"}</div></div>
-        <div class="fact"><div class="fact__label">Title</div><div class="fact__val">{[optionLabel(TITLE_STATUSES, listing.titleStatus), listing.titleState].filter(Boolean).join(", ") || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Title</div><div class="fact__val">{titleText(optionLabel(TITLE_STATUSES, listing.titleStatus), listing) || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">Exterior</div><div class="fact__val">{listing.exteriorColor || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">Interior</div><div class="fact__val">{listing.interiorColor || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">VIN</div><div class="fact__val mono">{listing.vin || "Not set"}</div></div>
@@ -124,7 +184,10 @@ const explain: Record<string, string> = {
         (listing.status === "live" || listing.status === "offer_accepted") && (
           <section class="card quick" aria-labelledby="quick-h">
             <h2 id="quick-h">Quick changes</h2>
-            <p class="muted">These update the public listing right away. For any other change, reply to the email you got when your listing went live and our team will make it.</p>
+            <p class="muted">
+              These update the public listing right away. Any other change is made by our team:{" "}
+              <a href={changeHref}>ask our team to make a change</a>.
+            </p>
             <form method="post" novalidate>
               <input type="hidden" name="intent" value="quick" />
               <div class="field-row">
@@ -161,14 +224,18 @@ const explain: Record<string, string> = {
         <p class="status-note">{explain[listing.status]}</p>
 
         {
-          listing.reviewNotes && (listing.status === "changes_requested" || listing.status === "rejected") && (
+          listing.reviewNotes && (listing.status === "changes_requested" || listing.status === "rejected" || listing.status === "withdrawn") && (
             <div class="notes">
-              <div class="buy__label">Notes from our reviewer</div>
+              <div class="buy__label">{listing.status === "withdrawn" ? "Notes from our team" : "Notes from our reviewer"}</div>
               <p class="pre">{listing.reviewNotes}</p>
+              {(listing.status === "rejected" || listing.status === "withdrawn") && <p><a href={questionHref}>{byEmail ? "Questions? Email our team" : "Questions? Contact the team"}</a></p>}
             </div>
           )
         }
 
+        {(listing.status === "rejected" || listing.status === "withdrawn") && (
+          <a class="btn btn--secondary block" href={url("/sell")}>Start a new listing</a>
+        )}
         {isEditable(listing) && <a class="btn block" href={editUrl}>{listing.status === "draft" ? "Continue editing" : "Make changes"}</a>}
         {publicUrl && <a class="btn btn--secondary block" href={publicUrl}>View public listing</a>}
         {
@@ -211,10 +278,18 @@ const explain: Record<string, string> = {
       </div>
 
       {
-        listing.status === "draft" && (
-          <form method="post" class="danger" onsubmit="return confirm('Delete this draft and its photos? This cannot be undone.')">
+        listing.status === "live" && (
+          <form method="post" class="danger" onsubmit="return confirm('Take this listing off the site? Open offers will be closed. You cannot put it back up yourself.')">
+            <input type="hidden" name="intent" value="takedown" />
+            <button class="linkish" type="submit">Take down listing</button>
+          </form>
+        )
+      }
+      {
+        canDelete && (
+          <form method="post" class="danger" onsubmit={`return confirm(${JSON.stringify(deleteConfirm)})`}>
             <input type="hidden" name="intent" value="delete" />
-            <button class="linkish" type="submit">Delete this draft</button>
+            <button class="linkish" type="submit">{deleteLabel}</button>
           </form>
         )
       }
@@ -343,6 +418,9 @@ const explain: Record<string, string> = {
   }
   .danger {
     text-align: center;
+  }
+  .inline-form {
+    margin-top: 10px;
   }
   .linkish {
     border: 0;

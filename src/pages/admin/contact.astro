@@ -1,0 +1,123 @@
+---
+import Base from "../../layouts/Base.astro";
+import AdminNav from "../../components/AdminNav.astro";
+import Notice from "../../components/Notice.astro";
+import { url } from "../../lib/paths";
+import { CONTACT_TOPICS, handledContactRequests, markContactHandled, openContactRequests } from "../../lib/contact";
+
+// Messages from the Contact the team form. Replies go from the admin's own
+// inbox (the Reply by email link), so this works with email off.
+const admin = Astro.locals.user!;
+if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
+
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData();
+  const id = String(form.get("id") ?? "").slice(0, 64);
+  await markContactHandled(admin.id, id);
+  return Astro.redirect(`${url("/admin/contact")}?done=1`, 303);
+}
+
+const open = await openContactRequests();
+const handled = await handledContactRequests();
+const fmt = (d: Date) =>
+  d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" });
+const replyHref = (email: string, topic: keyof typeof CONTACT_TOPICS) =>
+  `mailto:${email}?subject=${encodeURIComponent(`Re: ${CONTACT_TOPICS[topic]}`)}`;
+---
+
+<Base title="Messages to the team">
+  <AdminNav current="contact" />
+  <h1 class="page-title">Messages to the team</h1>
+  <p class="lede">
+    Sent from the Contact the team form. Reply from your own inbox with Reply by email, then mark the message as handled.
+  </p>
+  {Astro.url.searchParams.get("done") && <Notice tone="ok"><p>Marked as handled.</p></Notice>}
+  {
+    open.length === 0 ? (
+      <p class="muted">No messages waiting. New ones show up here.</p>
+    ) : (
+      <ul class="msgs">
+        {open.map((m) => (
+          <li class="card">
+            <p class="label">{CONTACT_TOPICS[m.topic]}</p>
+            <p class="body">{m.body}</p>
+            <p class="meta">
+              From <strong>{m.name}</strong> ({m.email}){m.userId ? ", signed in" : ""} · {fmt(m.createdAt)}
+              {m.listingId && <> · <a href={url(`/admin/listings/${m.listingId}`)}>Open the listing</a></>}
+              {m.userId && <> · <a href={`${url("/admin/users")}?q=${encodeURIComponent(m.email)}`}>Find the account</a></>}
+            </p>
+            <div class="actions">
+              <a class="btn" href={replyHref(m.email, m.topic)}>Reply by email</a>
+              <form method="post">
+                <input type="hidden" name="id" value={m.id} />
+                <button class="btn btn--secondary" type="submit">Mark as handled</button>
+              </form>
+            </div>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  {
+    handled.length > 0 && (
+      <details class="handled">
+        <summary>Recently handled ({handled.length})</summary>
+        <ul class="msgs">
+          {handled.map((m) => (
+            <li class="card">
+              <p class="label">{CONTACT_TOPICS[m.topic]}</p>
+              <p class="body">{m.body}</p>
+              <p class="meta">From <strong>{m.name}</strong> ({m.email}) · {fmt(m.createdAt)}</p>
+            </li>
+          ))}
+        </ul>
+      </details>
+    )
+  }
+</Base>
+
+<style>
+  .msgs {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 12px;
+    max-width: 760px;
+  }
+  .label {
+    color: var(--red);
+  }
+  .body {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 6px 0;
+  }
+  .meta {
+    color: var(--muted);
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+  .actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .actions form {
+    margin: 0;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .handled {
+    margin-top: 28px;
+    max-width: 760px;
+  }
+  .handled summary {
+    min-height: var(--tap);
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-weight: 700;
+  }
+</style>

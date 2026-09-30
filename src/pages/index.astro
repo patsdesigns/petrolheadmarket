@@ -3,6 +3,7 @@ import Base from "../layouts/Base.astro";
 import Notice from "../components/Notice.astro";
 import StatusBadge from "../components/StatusBadge.astro";
 import { url } from "../lib/paths";
+import { canTransact } from "../lib/config";
 import { listForUser } from "../lib/listings";
 import { formatMiles, formatPrice, listingTitle } from "../lib/listing-rules";
 import { isEditable } from "../lib/listings";
@@ -13,6 +14,16 @@ const mine = await listForUser(user.id);
 const notice = Astro.url.searchParams.get("notice");
 const needResponse = await offersNeedingResponse(user.id);
 const unread = Astro.locals.unread;
+// Admins only (role admin), so this never reveals the admin list. With email
+// off it is how the owner hears about new work.
+const todo = Astro.locals.profile?.role === "admin" ? Astro.locals.adminCounts : null;
+const todoParts = todo
+  ? [
+      todo.review > 0 && `${todo.review} listing${todo.review === 1 ? "" : "s"} to review`,
+      todo.contact > 0 && `${todo.contact} contact request${todo.contact === 1 ? "" : "s"}`,
+      todo.flags > 0 && `${todo.flags} flagged item${todo.flags === 1 ? "" : "s"}`,
+    ].filter((p): p is string => Boolean(p))
+  : [];
 const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_accepted").length;
 ---
 
@@ -32,9 +43,22 @@ const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_
     <a class:list={["card", "stat", { "is-alert": unread > 0 }]} href={url("/inbox")}><span class="stat__n">{unread}</span><span class="label">Unread messages</span></a>
   </div>
 
-  {notice === "deleted" && <Notice tone="ok"><p>Draft deleted.</p></Notice>}
   {
-    !user.emailVerified && (
+    todoParts.length > 0 && (
+      <Notice tone="info">
+        <p>
+          Admin to do: {todoParts.join(", ")}. <a href={url(todo!.review > 0 ? "/admin" : todo!.contact > 0 ? "/admin/contact" : "/admin/flags")}>Open the admin pages</a>
+        </p>
+      </Notice>
+    )
+  }
+  {notice === "deleted" && <Notice tone="ok"><p>Draft deleted.</p></Notice>}
+  {notice === "deleted-listing" && <Notice tone="ok"><p>Listing deleted, with its photos.</p></Notice>}
+  {notice === "deleted-kept" && (
+    <Notice tone="ok"><p>Listing and photos deleted. Your conversations with buyers stay in your inbox.</p></Notice>
+  )}
+  {
+    !canTransact(user) && (
       <Notice tone="info">
         <p>
           <a href={url("/verify-email")}>Confirm your email</a> to submit listings, make offers and message sellers.

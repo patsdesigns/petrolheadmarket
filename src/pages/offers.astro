@@ -14,6 +14,7 @@ import {
   withdrawOffer,
   type OfferThread,
 } from "../lib/offers";
+import { emailConfigured } from "../lib/config";
 
 const user = Astro.locals.user!;
 let actionError = "";
@@ -24,7 +25,10 @@ if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   const intent = String(form.get("intent") ?? "");
   const offerId = String(form.get("offerId") ?? "").slice(0, 64);
-  let result: { ok: boolean; error?: string } = { ok: false, error: "Unknown action." };
+  let result: { ok: boolean; error?: string; syncFailed?: { listingId: string; bySeller: boolean } } = {
+    ok: false,
+    error: "Unknown action.",
+  };
 
   if (intent === "accept") result = await acceptOffer(offerId, user.id);
   else if (intent === "decline") result = await declineOffer(offerId, user.id);
@@ -49,7 +53,11 @@ if (Astro.request.method === "POST") {
       }
     }
   }
-  if (result.ok && !counterFor) return Astro.redirect(`${url("/offers")}?done=${intent}`, 303);
+  if (result.ok && !counterFor) {
+    // The seller is told when the Lot could not be updated, with a link to retry.
+    const stale = result.syncFailed?.bySeller ? `&stale=${encodeURIComponent(result.syncFailed.listingId)}` : "";
+    return Astro.redirect(`${url("/offers")}?done=${intent}${stale}`, 303);
+  }
   if (!result.ok) actionError = result.error ?? "Something went wrong.";
 }
 
@@ -73,8 +81,13 @@ const names = new Map<string, string>();
 for (const t of received) if (!names.has(t.buyerId)) names.set(t.buyerId, (await contactFor(t.buyerId)).displayName);
 
 const done = Astro.url.searchParams.get("done");
+const staleId = Astro.url.searchParams.get("stale");
+const staleListing = staleId && /^[0-9a-f-]{36}$/.test(staleId) ? staleId : null;
+const emailOn = emailConfigured();
 const doneText: Record<string, string> = {
-  accept: "Offer accepted. You both have each other's contact details below and by email.",
+  accept: emailOn
+    ? "Offer accepted. You both have each other's contact details below and by email."
+    : "Offer accepted. Contact details are below.",
   decline: "Offer declined.",
   withdraw: "Offer withdrawn.",
   counter: "Counter offer sent.",
@@ -82,6 +95,16 @@ const doneText: Record<string, string> = {
 
 const statusText = (t: OfferThread) => {
   const o = t.latest;
+  if (o.status === "ended") {
+    // The seller called the deal off: put the car back on sale (it may have
+    // been sold or had another offer accepted since), or it was taken off the site.
+    if (t.listing.status !== "withdrawn" && t.listing.status !== "rejected" && !t.listing.deletedAt) {
+      return t.role === "buyer"
+        ? `The seller called off the ${formatPrice(o.amount)} deal and put the car back on sale.`
+        : `You put the car back on sale, so the ${formatPrice(o.amount)} deal ended.`;
+    }
+    return `The ${formatPrice(o.amount)} deal ended because the car was taken off the site.`;
+  }
   const who = o.madeBy === "buyer" ? (t.role === "buyer" ? "Your offer" : "Their offer") : t.role === "seller" ? "Your counter" : "Seller's counter";
   const label: Record<string, string> = {
     pending: "waiting for a response",
@@ -93,6 +116,27 @@ const statusText = (t: OfferThread) => {
   };
   return `${who} of ${formatPrice(o.amount)}, ${label[o.status]}`;
 };
+const historyLabel: Record<string, string> = {
+  pending: "waiting",
+  countered: "countered",
+  accepted: "accepted",
+  declined: "declined",
+  expired: "expired",
+  withdrawn: "withdrawn",
+  ended: "deal called off",
+};
+const onSite = (t: OfferThread) => ["live", "offer_accepted", "sold"].includes(t.listing.status);
+// A buyer whose offer is over can try again while the car is for sale.
+const canOfferAgain = (t: OfferThread) =>
+  t.role === "buyer" &&
+  !["pending", "accepted"].includes(t.latest.status) &&
+  t.listing.status === "live" &&
+  t.listing.acceptsOffers &&
+  !!t.listing.slug;
+const acceptConfirm = (t: OfferThread) =>
+  t.role === "seller"
+    ? "return confirm('Accept this offer? The car is marked as offer accepted, every other open offer is declined, and you and the buyer both get the contact details of the other.')"
+    : "return confirm('Accept this counter offer? The deal is agreed, and you and the seller both get the contact details of the other.')";
 const hoursLeft = (d: Date) => Math.max(0, Math.round((d.getTime() - Date.now()) / 3_600_000));
 const waitingOnMe = (t: OfferThread) =>
   t.latest.status === "pending" &&
@@ -106,8 +150,11 @@ const waitingOnMe = (t: OfferThread) =>
       <p class="lede">Offers expire after 72 hours. Accepting one shares contact details with the other person.</p>
     </div>
   </div>
-  {Astro.url.searchParams.get("sent") && <Notice tone="ok"><p>Offer sent. We will email you when the seller responds.</p></Notice>}
+  {Astro.url.searchParams.get("sent") && <Notice tone="ok"><p>{emailOn && Astro.locals.profile?.emailNotifications ? "Offer sent. We will email you when the seller responds." : "Offer sent. Check Offers for the seller's reply."}</p></Notice>}
   {done && doneText[done] && <Notice tone="ok"><p>{doneText[done]}</p></Notice>}
+  {done === "accept" && staleListing && (
+    <Notice tone="error"><p>The public listing could not be updated yet, so it may still show as for sale. <a href={url(`/listings/${staleListing}`)}>Open the listing to retry</a>.</p></Notice>
+  )}
   {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
 
   <div class="columns">
@@ -128,10 +175,14 @@ const waitingOnMe = (t: OfferThread) =>
             {section.list.map((t) => (
               <li class:list={["card", "offer", { "is-waiting": waitingOnMe(t) }]}>
                 <div class="offer__head">
-                  <a class="offer__car" href={t.listing.slug ? siteUrl(`/listings/${t.listing.slug}`) : url(`/listings/${t.listing.id}`)}>
-                    {listingTitle(t.listing)}
-                  </a>
-                  <StatusBadge status={t.listing.status} />
+                  {t.listing.deletedAt ? (
+                    <span class="offer__car">{listingTitle(t.listing)}</span>
+                  ) : (
+                    <a class="offer__car" href={t.listing.slug && ["live", "offer_accepted", "sold"].includes(t.listing.status) ? siteUrl(`/listings/${t.listing.slug}`) : t.role === "seller" ? url(`/listings/${t.listing.id}`) : undefined}>
+                      {listingTitle(t.listing)}
+                    </a>
+                  )}
+                  {t.listing.deletedAt ? <span class="badge">Deleted</span> : <StatusBadge status={t.listing.status} />}
                 </div>
                 <p class="offer__meta">
                   Asking {formatPrice(t.listing.price)}
@@ -142,6 +193,9 @@ const waitingOnMe = (t: OfferThread) =>
                   {t.latest.status === "pending" && <span class="muted"> · {hoursLeft(t.latest.expiresAt)}h left</span>}
                 </p>
                 {t.latest.message && <p class="offer__note">"{t.latest.message}"</p>}
+                {t.latest.message && t.latest.flagged && (
+                  <p class="muted small">Careful: never wire money, use a shipping agent or pay before you have seen the car and the title.</p>
+                )}
 
                 {t.history.length > 1 && (
                   <details class="offer__hist">
@@ -149,7 +203,7 @@ const waitingOnMe = (t: OfferThread) =>
                     <ol>
                       {t.history.map((o) => (
                         <li>
-                          {o.madeBy === "buyer" ? "Buyer" : "Seller"} offered {formatPrice(o.amount)} ({o.status})
+                          {o.madeBy === "buyer" ? "Buyer" : "Seller"} offered {formatPrice(o.amount)} ({historyLabel[o.status] ?? o.status})
                         </li>
                       ))}
                     </ol>
@@ -170,7 +224,7 @@ const waitingOnMe = (t: OfferThread) =>
 
                 {waitingOnMe(t) && (
                   <div class="actions">
-                    <form method="post">
+                    <form method="post" onsubmit={acceptConfirm(t)}>
                       <input type="hidden" name="offerId" value={t.latest.id} />
                       <button class="btn" type="submit" name="intent" value="accept">Accept offer</button>
                     </form>
@@ -204,6 +258,18 @@ const waitingOnMe = (t: OfferThread) =>
                     <input type="hidden" name="offerId" value={t.latest.id} />
                     <button class="btn btn--secondary" type="submit" name="intent" value="withdraw">Withdraw offer</button>
                   </form>
+                )}
+                {onSite(t) && (
+                  <div class="actions">
+                    {canOfferAgain(t) && (
+                      <a class="btn btn--secondary" href={`${url("/offer")}?listing=${encodeURIComponent(t.listing.slug!)}`}>Make a new offer</a>
+                    )}
+                    {t.role === "seller" ? (
+                      <a class="btn btn--secondary" href={`${url("/inbox/new")}?offer=${encodeURIComponent(t.latest.id)}`}>Message buyer</a>
+                    ) : (
+                      t.listing.slug && <a class="btn btn--secondary" href={`${url("/message")}?listing=${encodeURIComponent(t.listing.slug)}`}>Message seller</a>
+                    )}
+                  </div>
                 )}
               </li>
             ))}

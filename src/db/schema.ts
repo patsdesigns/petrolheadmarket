@@ -20,6 +20,9 @@ export const profiles = sqliteTable("profiles", {
   emailNotifications: integer("email_notifications", { mode: "boolean" })
     .notNull()
     .default(true),
+  // Set by an admin (/app/admin/users). A suspended person is treated as
+  // signed out, cannot sign in, and cannot message or make offers.
+  suspendedAt: integer("suspended_at", { mode: "timestamp_ms" }),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
 });
 
@@ -92,6 +95,20 @@ export const listings = sqliteTable(
     // Review and publishing
     slug: text("slug").unique(),
     cmsItemId: text("cms_item_id"),
+    // Set while a publish is running, so a double-clicked Approve or Retry
+    // (or the lazy retry) can't create two CMS items. Stale after 2 minutes.
+    publishingAt: integer("publishing_at", { mode: "timestamp_ms" }),
+    // The CMS does not match the app yet: a sync or an unpublish failed.
+    // Retried from the admin pages (see retryPendingCms in src/lib/cms.ts).
+    cmsSyncPending: integer("cms_sync_pending", { mode: "boolean" }).notNull().default(false),
+    // Last publish, sync or unpublish attempt. The lazy retry takes the
+    // listings tried longest ago first, so a few that keep failing can't
+    // keep the rest waiting.
+    cmsAttemptedAt: integer("cms_attempted_at", { mode: "timestamp_ms" }),
+    // Set when the seller deletes a listing that has offers or messages. The
+    // row stays so buyers keep their threads and admins keep the evidence,
+    // but the seller no longer sees it and its photos are gone.
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
     reviewNotes: text("review_notes"),
     reviewerId: text("reviewer_id"),
     submittedAt: integer("submitted_at", { mode: "timestamp_ms" }),
@@ -144,7 +161,8 @@ export const auditLog = sqliteTable(
 
 export type AuditEntry = typeof auditLog.$inferSelect;
 
-export const OFFER_STATUSES = ["pending", "countered", "accepted", "declined", "expired", "withdrawn"] as const;
+// "ended": the seller put the car back on sale after accepting (the deal is off).
+export const OFFER_STATUSES = ["pending", "countered", "accepted", "declined", "expired", "withdrawn", "ended"] as const;
 export type OfferStatus = (typeof OFFER_STATUSES)[number];
 
 // A buyer's offer is a row made by "buyer". A seller's counter is a new row
@@ -164,6 +182,10 @@ export const offers = sqliteTable(
     message: text("message"),
     status: text("status", { enum: OFFER_STATUSES }).notNull().default("pending"),
     parentOfferId: text("parent_offer_id"),
+    // Offer and counter notes go through the same scam filter as messages.
+    flagged: integer("flagged", { mode: "boolean" }).notNull().default(false),
+    flagReason: text("flag_reason"),
+    flagReviewedAt: integer("flag_reviewed_at", { mode: "timestamp_ms" }),
     expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
     respondedAt: integer("responded_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
@@ -171,6 +193,7 @@ export const offers = sqliteTable(
   (t) => [
     index("offers_listing_idx").on(t.listingId, t.status),
     index("offers_buyer_idx").on(t.buyerId, t.createdAt),
+    index("offers_flagged_idx").on(t.flagged, t.flagReviewedAt),
   ],
 );
 
@@ -214,6 +237,9 @@ export const messages = sqliteTable(
     flagged: integer("flagged", { mode: "boolean" }).notNull().default(false),
     flagReason: text("flag_reason"),
     flagReviewedAt: integer("flag_reviewed_at", { mode: "timestamp_ms" }),
+    // Set when an admin hides a flagged message (or suspends its sender
+    // before it was read). Hidden messages are left out for both members.
+    hiddenAt: integer("hidden_at", { mode: "timestamp_ms" }),
     readAt: integer("read_at", { mode: "timestamp_ms" }),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
   },
@@ -225,3 +251,41 @@ export const messages = sqliteTable(
 );
 
 export type Message = typeof messages.$inferSelect;
+
+// App rate limits for sign in, sign up and emailed links (see
+// src/lib/auth-limits.ts). One fixed-window counter per key. Keys hold a
+// SHA-256 hash of the email address or IP, never the raw value.
+export const authLimits = sqliteTable("auth_limits", {
+  key: text("key").primaryKey(),
+  count: integer("count").notNull(),
+  windowStart: integer("window_start").notNull(),
+});
+
+// Last run of background jobs that have no cron (see src/lib/cms.ts
+// retryPendingCms). One row per job, used to throttle it.
+export const jobRuns = sqliteTable("job_runs", {
+  name: text("name").primaryKey(),
+  ranAt: integer("ran_at").notNull(),
+});
+
+// Messages to the team from the Contact the team form (/app/contact). Works
+// with email off: admins read them on /app/admin/contact and reply from
+// their own inbox. The user is kept when the sender was signed in.
+export const contactRequests = sqliteTable(
+  "contact_requests",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id").references(() => user.id, { onDelete: "set null" }),
+    name: text("name").notNull(),
+    email: text("email").notNull(),
+    topic: text("topic", { enum: ["listing", "account", "suspended", "other"] }).notNull(),
+    listingId: text("listing_id"),
+    body: text("body").notNull(),
+    handledAt: integer("handled_at", { mode: "timestamp_ms" }),
+    handledBy: text("handled_by"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [index("contact_requests_open_idx").on(t.handledAt, t.createdAt)],
+);
+
+export type ContactRequest = typeof contactRequests.$inferSelect;

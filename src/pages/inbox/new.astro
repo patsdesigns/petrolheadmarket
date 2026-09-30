@@ -1,0 +1,78 @@
+---
+// A seller writes to a buyer who made an offer, before deciding on it. The
+// thread is created with the first message (never on this GET).
+import Base from "../../layouts/Base.astro";
+import Notice from "../../components/Notice.astro";
+import SafetyNote from "../../components/SafetyNote.astro";
+import { url, siteUrl } from "../../lib/paths";
+import { formatPrice, listingTitle } from "../../lib/listing-rules";
+import { offerForSeller, sendMessage, MAX_MESSAGE } from "../../lib/messaging";
+import { canTransact } from "../../lib/config";
+
+const user = Astro.locals.user!;
+const offerId = (Astro.url.searchParams.get("offer") ?? "").slice(0, 64);
+const found = offerId ? await offerForSeller(offerId, user.id) : null;
+if (!found) return Astro.rewrite(url("/404"));
+const { offer, listing, buyerName, thread } = found;
+
+// A conversation already exists: continue there.
+if (thread && Astro.request.method !== "POST") return Astro.redirect(url(`/inbox/${thread.id}`), 303);
+
+const onSite = ["live", "offer_accepted", "sold"].includes(listing.status);
+const selfUrl = `${url("/inbox/new")}?offer=${encodeURIComponent(offer.id)}`;
+let error = "";
+let body = "";
+if (Astro.request.method === "POST") {
+  body = String((await Astro.request.formData()).get("body") ?? "").slice(0, MAX_MESSAGE + 1);
+  if (!canTransact(user)) error = "Confirm your email before you message a buyer.";
+  else {
+    const result = await sendMessage({ senderId: user.id, body, offerId: offer.id });
+    if (result.ok) return Astro.redirect(url(`/inbox/${result.threadId}`), 303);
+    error = result.error;
+  }
+}
+---
+
+<Base title="Message the buyer">
+  <a class="back" href={url("/offers")}>← Offers</a>
+  <h1 class="page-title">Message the buyer</h1>
+  <div class="card compose">
+    <p class="about">
+      {buyerName} offered {formatPrice(offer.amount)} for your{" "}
+      {listing.slug && onSite ? <a href={siteUrl(`/listings/${listing.slug}`)}>{listingTitle(listing)}</a> : listingTitle(listing)}.
+    </p>
+    <SafetyNote />
+    {!onSite ? (
+      <Notice tone="info"><p>This listing is no longer on the site, so you can't start a conversation about it.</p></Notice>
+    ) : (
+      <>
+        {!canTransact(user) && (
+          <Notice tone="info"><p><a href={`${url("/verify-email")}?next=${encodeURIComponent(selfUrl)}`}>Confirm your email</a> to message buyers.</p></Notice>
+        )}
+        {error && <Notice tone="error"><p>{error}</p></Notice>}
+        <form method="post">
+          <div class="field">
+            <label for="f-body">Your message to {buyerName}</label>
+            <span class="hint" id="f-body-hint">Ask a question or suggest a time to see the car. The offer stays open while you talk. Your email stays private.</span>
+            <textarea id="f-body" name="body" rows="6" maxlength={MAX_MESSAGE} required aria-describedby="f-body-hint">{body}</textarea>
+          </div>
+          <button class="btn" type="submit" disabled={!canTransact(user)}>Send message</button>
+        </form>
+      </>
+    )}
+  </div>
+</Base>
+
+<style>
+  .compose {
+    max-width: 760px;
+  }
+  .about {
+    margin: 0 0 16px;
+    color: var(--muted);
+  }
+  .about a {
+    color: var(--ink);
+    font-weight: 700;
+  }
+</style>

@@ -1,10 +1,12 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
-import { listings, offers, user as users, type Listing } from "../db/schema";
+import { listings, offers, profiles, user as users, type Listing } from "../db/schema";
 import { audit } from "./audit";
-import { syncListing } from "./cms";
+import { IN_CMS_STATUSES, syncListing } from "./cms";
 import { sendEmail } from "./email";
 import { FIELD_RULES, formatPrice, listingTitle } from "./listing-rules";
+import { expireStaleOffers, offerPhrase } from "./offers";
+import { safeError } from "./log";
 
 export type ActionResult = { ok: true; synced: boolean } | { ok: false; error?: string; errors?: Record<string, string> };
 
@@ -30,7 +32,11 @@ export async function quickEdit(listing: Listing, form: Record<string, string>):
     contactPhone: (phone.success ? phone.data : null) as string | null,
   };
   const changed = (Object.keys(next) as (keyof typeof next)[]).filter((k) => next[k] !== listing[k]);
-  if (changed.length === 0) return { ok: true, synced: true };
+  if (changed.length === 0) {
+    // Nothing new, but saving again should still fix a site that is behind.
+    if (!listing.cmsItemId || !listing.cmsSyncPending) return { ok: true, synced: true };
+    return { ok: true, synced: (await syncListing(listing.id, listing.userId)).ok };
+  }
 
   await getDb()
     .update(listings)
@@ -41,13 +47,29 @@ export async function quickEdit(listing: Listing, form: Record<string, string>):
   return { ok: true, synced: sync.ok };
 }
 
-async function emailBuyers(offerRows: { buyerId: string; amount: number }[], subject: string, lines: (amount: number) => string[]) {
+type OfferRow = { buyerId: string; amount: number; madeBy: string };
+
+/**
+ * Email each buyer. With respectSetting, buyers who turned email
+ * notifications off are skipped (a closed offer is a decline). An accepted
+ * deal ending always goes out, like accepted deal emails.
+ */
+async function emailBuyers(
+  offerRows: OfferRow[],
+  subject: string,
+  lines: (o: OfferRow) => string[],
+  opts: { respectSetting: boolean },
+) {
   const db = getDb();
   for (const o of offerRows) {
     const buyer = await db.select().from(users).where(eq(users.id, o.buyerId)).get();
     if (!buyer) continue;
-    await sendEmail({ to: buyer.email, subject, paragraphs: lines(o.amount) }).catch((e) =>
-      console.error("[seller] email failed", e),
+    if (opts.respectSetting) {
+      const profile = await db.select().from(profiles).where(eq(profiles.userId, o.buyerId)).get();
+      if (profile?.emailNotifications === false) continue;
+    }
+    await sendEmail({ to: buyer.email, subject, paragraphs: lines(o) }).catch((e) =>
+      console.error("[seller] email failed", safeError(e)),
     );
   }
 }
@@ -62,6 +84,8 @@ export async function markSold(listing: Listing): Promise<ActionResult> {
     .get();
   if (!done) return { ok: false, error: "Only live listings can be marked as sold." };
 
+  // Offers already past their 72 hours expired; they are not closed by the sale.
+  await expireStaleOffers();
   const closed = await db
     .update(offers)
     .set({ status: "declined", respondedAt: new Date() })
@@ -69,10 +93,15 @@ export async function markSold(listing: Listing): Promise<ActionResult> {
     .returning()
     .all();
   const title = listingTitle(listing);
-  await emailBuyers(closed, `The ${title} has sold`, (amount) => [
-    `The seller marked the ${title} as sold, so your ${formatPrice(amount)} offer was closed.`,
-    "Thanks for using Petrol Head Market. There are more great cars on the site.",
-  ]);
+  await emailBuyers(
+    closed,
+    `The ${title} has sold`,
+    (o) => [
+      `The seller marked the ${title} as sold, so ${offerPhrase(o)} was closed.`,
+      "Thanks for using Petrol Head Market. There are more great cars on the site.",
+    ],
+    { respectSetting: true },
+  );
 
   await audit(listing.userId, "mark_sold", "listing", listing.id);
   const sync = await syncListing(listing.id, listing.userId);
@@ -90,19 +119,34 @@ export async function relist(listing: Listing): Promise<ActionResult> {
     .get();
   if (!done) return { ok: false, error: "Only listings with an accepted offer can be relisted." };
 
+  // "ended", not "withdrawn": the buyer did not pull out, the seller called it off.
   const ended = await db
     .update(offers)
-    .set({ status: "withdrawn", respondedAt: new Date() })
+    .set({ status: "ended", respondedAt: new Date() })
     .where(and(eq(offers.listingId, listing.id), eq(offers.status, "accepted")))
     .returning()
     .all();
   const title = listingTitle(listing);
-  await emailBuyers(ended, `The ${title} is back on sale`, (amount) => [
-    `The seller put the ${title} back on sale, so the ${formatPrice(amount)} deal is off.`,
-    "If you are still interested, you can make a new offer or message the seller.",
-  ]);
+  await emailBuyers(
+    ended,
+    `The ${title} is back on sale`,
+    (o) => [
+      `The seller put the ${title} back on sale, so the ${formatPrice(o.amount)} deal is off.`,
+      "If you are still interested, you can make a new offer or message the seller.",
+    ],
+    { respectSetting: false },
+  );
 
   await audit(listing.userId, "relist", "listing", listing.id);
+  const sync = await syncListing(listing.id, listing.userId);
+  return { ok: true, synced: sync.ok };
+}
+
+/** Retry Webflow after a failed update (Retry update on the listing page). */
+export async function resync(listing: Listing): Promise<ActionResult> {
+  if (!listing.cmsItemId || !(IN_CMS_STATUSES as readonly string[]).includes(listing.status)) {
+    return { ok: false, error: "This listing is not on the site." };
+  }
   const sync = await syncListing(listing.id, listing.userId);
   return { ok: true, synced: sync.ok };
 }

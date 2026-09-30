@@ -2,6 +2,7 @@
 import Base from "../layouts/Base.astro";
 import Notice from "../components/Notice.astro";
 import { url } from "../lib/paths";
+import { canTransact } from "../lib/config";
 import { createDraft, listForUser, MAX_OPEN_DRAFTS } from "../lib/listings";
 import { listingTitle } from "../lib/listing-rules";
 import { MIN_PHOTOS, MIN_DESCRIPTION } from "../lib/listing-options";
@@ -12,8 +13,9 @@ let error = "";
 if (Astro.request.method === "POST") {
   const id = await createDraft(user.id);
   if (id) return Astro.redirect(`${url(`/listings/${id}/edit`)}?step=car`, 303);
-  error = `You have ${MAX_OPEN_DRAFTS} drafts open. Finish or delete one before starting another.`;
+  error = `You have ${MAX_OPEN_DRAFTS} drafts open. Finish or delete one below before starting another.`;
 }
+const notice = Astro.url.searchParams.get("notice");
 
 const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" || l.status === "changes_requested");
 ---
@@ -26,6 +28,11 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
   </p>
 
   {error && <Notice tone="error"><p>{error}</p></Notice>}
+  {notice === "deleted" && <Notice tone="ok"><p>Draft deleted.</p></Notice>}
+  {notice === "deleted-listing" && <Notice tone="ok"><p>Listing deleted, with its photos.</p></Notice>}
+  {notice === "deleted-kept" && (
+    <Notice tone="ok"><p>Listing and photos deleted. Your conversations with buyers stay in your inbox.</p></Notice>
+  )}
 
   {
     drafts.length > 0 && (
@@ -35,7 +42,17 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
           {drafts.map((d) => (
             <li class="spec-row">
               <span>{listingTitle(d)}</span>
-              <a href={`${url(`/listings/${d.id}/edit`)}`}>Continue</a>
+              <span class="draft-actions">
+                <a href={`${url(`/listings/${d.id}/edit`)}`}>Continue</a>
+                {d.status === "draft" && (
+                  <form method="post" action={url(`/listings/${d.id}`)}
+                    onsubmit="return confirm('Delete this draft and its photos? This cannot be undone.')">
+                    <input type="hidden" name="intent" value="delete" />
+                    <input type="hidden" name="back" value="sell" />
+                    <button class="linkish" type="submit" aria-label={`Delete ${listingTitle(d)}`}>Delete</button>
+                  </form>
+                )}
+              </span>
             </li>
           ))}
         </ul>
@@ -63,7 +80,7 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
         <li>It goes live on Petrol Head Market. Buyers message you or make offers.</li>
       </ol>
       {
-        !user.emailVerified && (
+        !canTransact(user) && (
           <p class="muted">
             You can start now. You will need to <a href={url("/verify-email")}>confirm your email</a> before you submit.
           </p>
@@ -93,9 +110,42 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
     font-size: 16px;
     color: var(--ink);
     font-weight: 600;
+    flex: 1 1 auto;
+    min-width: 0;
+    white-space: normal;
+    overflow-wrap: anywhere;
   }
   .drafts a {
     font-weight: 700;
+  }
+  .drafts .spec-row {
+    gap: 12px;
+    align-items: center;
+  }
+  .draft-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-shrink: 0;
+  }
+  .draft-actions form {
+    margin: 0;
+  }
+  .linkish {
+    border: 0;
+    background: none;
+    color: var(--red);
+    font: inherit;
+    font-weight: 600;
+    text-decoration: underline;
+    cursor: pointer;
+    padding: 0;
+  }
+  .draft-actions a,
+  .draft-actions .linkish {
+    min-height: var(--tap);
+    display: inline-flex;
+    align-items: center;
   }
   .sell-grid {
     display: grid;

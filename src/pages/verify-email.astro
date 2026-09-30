@@ -4,22 +4,36 @@ import Notice from "../components/Notice.astro";
 import { url } from "../lib/paths";
 import { safeNext } from "../lib/forms";
 import { callAuth, friendlyAuthError } from "../lib/auth-call";
+import { emailConfigured } from "../lib/config";
+import { verifySendFailures } from "../lib/auth";
 
 const params = Astro.url.searchParams;
 const next = safeNext(params.get("next"));
 const user = Astro.locals.user;
+const emailOn = emailConfigured();
+// While email is off nobody gets a confirmation link, not even ADMIN_EMAILS
+// addresses (they are confirmed with a password reset, see src/lib/auth.ts).
+const canResend = Boolean(user && !user.emailVerified && emailOn);
 
 let resent = false;
-let formError = params.get("error") ? "This confirmation link has expired or was already used. Send a new one below." : "";
+let formError = params.get("error")
+  ? `This confirmation link has expired or was already used.${canResend ? " Send a new one below." : ""}`
+  : "";
 
-if (Astro.request.method === "POST" && user && !user.emailVerified) {
+if (Astro.request.method === "POST" && user && canResend) {
   const result = await callAuth(Astro.request, "/send-verification-email", {
     email: user.email,
     callbackURL: `${url("/verify-email")}?verified=1&next=${encodeURIComponent(next)}`,
   });
+  verifySendFailures.delete(user.email.toLowerCase());
   if (result.ok) resent = true;
   else formError = friendlyAuthError(result);
 }
+
+// Only say a link was sent when one was: straight after signing up (sent=1,
+// which signup adds only when the email went out) or after a resend here.
+// Members who signed up while email was off never got one.
+const linkSent = resent || (Astro.request.method !== "POST" && params.get("sent") === "1");
 
 // After the link is opened Better Auth signs the person in, so trust the
 // session. The query flag only matters if they opened it signed out.
@@ -34,10 +48,20 @@ const verified = user ? user.emailVerified : params.get("verified") === "1";
       <a class="btn" href={next}>Continue</a>
     </AuthLayout>
   ) : (
-    <AuthLayout title="Confirm your email">
+    <AuthLayout title={emailOn ? "Confirm your email" : "Email is not switched on yet"}>
       {formError && <Notice tone="error"><p>{formError}</p></Notice>}
       {resent && <Notice tone="ok"><p>A new link is on its way.</p></Notice>}
-      {user ? (
+      {!emailOn ? (
+        <>
+          <p>
+            Email confirmation is not switched on yet, so we did not send you a link. You do not need one for now.
+            {user ? " You can list a car, make offers and message sellers right away." : ""}
+          </p>
+          <a class="btn" href={user ? next : `${url("/login")}?next=${encodeURIComponent(next)}`}>
+            {user ? "Continue" : "Sign in"}
+          </a>
+        </>
+      ) : user && linkSent ? (
         <>
           <p>
             We sent a link to <strong>{user.email}</strong>. Open it to confirm your email. You need to do this
@@ -46,6 +70,17 @@ const verified = user ? user.emailVerified : params.get("verified") === "1";
           <p class="muted">Nothing after a few minutes? Check your spam folder, or send it again.</p>
           <form method="post">
             <button class="btn btn--secondary" type="submit">Send the link again</button>
+          </form>
+          <p class="skip"><a href={next}>Do this later</a></p>
+        </>
+      ) : user ? (
+        <>
+          <p>
+            Confirm your email to list a car, make offers and message sellers. We will send a link to{" "}
+            <strong>{user.email}</strong>.
+          </p>
+          <form method="post">
+            <button class="btn" type="submit">Send me a confirmation link</button>
           </form>
           <p class="skip"><a href={next}>Do this later</a></p>
         </>

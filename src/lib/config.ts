@@ -24,14 +24,39 @@ export function isAdminEmail(email: string): boolean {
 }
 
 /**
- * Headers that may carry the visitor's IP, in order of trust. Better Auth
- * keys its rate limits on the first one present. Behind Webflow Cloud the
- * exact header is not documented, so accept the common ones.
+ * The team's public contact address (SUPPORT_EMAIL), if one is set. It is
+ * shown in mailto links and used as reply_to, so it is never an ADMIN_EMAILS
+ * address by default: those are sign in names, and publishing one would let
+ * anyone aim failed sign ins at the owner's account.
  */
-export const IP_HEADERS = [
-  "cf-connecting-ip",
-  "true-client-ip",
-  "x-real-ip",
-  "x-client-ip",
-  "x-forwarded-for",
-];
+export function supportEmail(): string | undefined {
+  const value = (env.SUPPORT_EMAIL || "").trim();
+  return /^[^\s@<>"]+@[^\s@<>"]+\.[^\s@<>"]+$/.test(value) && value.length <= 254 ? value : undefined;
+}
+
+/**
+ * Whether the app can actually send email. Without RESEND_API_KEY emails are
+ * not delivered, so nothing may claim one was sent. Read env inside the
+ * function, never at module scope.
+ */
+export function emailConfigured(): boolean {
+  return Boolean(env.RESEND_API_KEY);
+}
+
+/**
+ * Whether this person may submit a listing, make an offer or send a message.
+ * With email switched on that needs a confirmed email. While email is off no
+ * one could ever confirm, so everyone signed in may go ahead.
+ */
+export function canTransact(user: { emailVerified: boolean }): boolean {
+  return emailConfigured() ? user.emailVerified : true;
+}
+
+/**
+ * The only header trusted for the visitor IP. Cloudflare's edge sets
+ * cf-connecting-ip and overwrites any value the client sends, so it cannot
+ * be spoofed. Other headers (x-real-ip, x-forwarded-for and so on) can come
+ * from the client and are ignored. It is often missing behind Webflow's
+ * proxy, so rate limits are keyed by email first (src/lib/auth-limits.ts).
+ */
+export const IP_HEADERS = ["cf-connecting-ip"];

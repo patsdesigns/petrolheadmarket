@@ -4,28 +4,52 @@ import Notice from "../components/Notice.astro";
 import CarSummary from "../components/CarSummary.astro";
 import SafetyNote from "../components/SafetyNote.astro";
 import { url } from "../lib/paths";
-import { getPublicListing } from "../lib/public-listing";
+import { getPublicListing, isAppSlug, slugFromReferer, validSlug } from "../lib/public-listing";
+import NotOnApp from "../components/NotOnApp.astro";
 import { getThreadFor, sendMessage, MAX_MESSAGE } from "../lib/messaging";
+import { canTransact, publicOrigin } from "../lib/config";
+import type { Listing } from "../db/schema";
 
-const user = Astro.locals.user!;
-const slug = Astro.url.searchParams.get("listing");
-const found = await getPublicListing(slug);
-if (!found) return Astro.rewrite(url("/404"));
-const { listing } = found;
-const selfUrl = `${url("/message")}?listing=${encodeURIComponent(slug!)}`;
+// Look the listing up before anything else: the Lot's sample listings are
+// not in the app, and nobody should have to sign up to find that out.
+const rawSlug = Astro.url.searchParams.get("listing");
+if (!rawSlug) {
+  const fromReferer = slugFromReferer(Astro.request, publicOrigin());
+  if (fromReferer) return Astro.redirect(`${url("/message")}?listing=${encodeURIComponent(fromReferer)}`, 303);
+}
+const slug = validSlug(rawSlug);
+const found = slug ? await getPublicListing(slug) : null;
+let notOpen: "sample" | "gone" | "missing" | null = null;
+if (!found) {
+  // A friendly page with status 200: the Lot links here from every car, and a
+  // 404 status could be replaced by the host's generic error page.
+  notOpen = !rawSlug ? "missing" : slug && (await isAppSlug(slug)) ? "gone" : "sample";
+}
+// A real listing needs an account (the middleware lets signed-out GETs through to here).
+const maybeUser = Astro.locals.user;
+if (found && !maybeUser) {
+  return Astro.redirect(`${url("/login")}?next=${encodeURIComponent(Astro.url.pathname + Astro.url.search)}`, 303);
+}
+// Below here only runs for a real listing and a signed-in person; the
+// template shows NotOnApp otherwise.
+const user = maybeUser!;
+const listing = found?.listing as Listing;
+const selfUrl = `${url("/message")}?listing=${encodeURIComponent(slug ?? "")}`;
 
-// Sellers see their conversations in the inbox.
-if (listing.userId === user.id) return Astro.redirect(url("/inbox"), 303);
+if (found) {
+  // Sellers see their conversations in the inbox.
+  if (listing.userId === user.id) return Astro.redirect(url("/inbox"), 303);
 
-// One thread per listing per buyer: if it exists, continue there.
-const existing = await getThreadFor(listing.id, user.id);
-if (existing && Astro.request.method !== "POST") return Astro.redirect(url(`/inbox/${existing.id}`), 303);
+  // One thread per listing per buyer: if it exists, continue there.
+  const existing = await getThreadFor(listing.id, user.id);
+  if (existing && Astro.request.method !== "POST") return Astro.redirect(url(`/inbox/${existing.id}`), 303);
+}
 
 let error = "";
 let body = "";
-if (Astro.request.method === "POST") {
+if (found && Astro.request.method === "POST") {
   body = String((await Astro.request.formData()).get("body") ?? "").slice(0, MAX_MESSAGE + 1);
-  if (!user.emailVerified) error = "Confirm your email before you message a seller.";
+  if (!canTransact(user)) error = "Confirm your email before you message a seller.";
   else {
     const result = await sendMessage({ senderId: user.id, body, listing });
     if (result.ok) return Astro.redirect(url(`/inbox/${result.threadId}`), 303);
@@ -35,6 +59,10 @@ if (Astro.request.method === "POST") {
 ---
 
 <Base title="Message the seller">
+  {notOpen || !found ? (
+    <NotOnApp reason={notOpen ?? "missing"} slug={slug} action="message" />
+  ) : (
+  <>
   <a class="back" href={url("/inbox")}>← Inbox</a>
   <h1 class="page-title">Message the seller</h1>
   <div class="split">
@@ -42,7 +70,7 @@ if (Astro.request.method === "POST") {
   <div class="split__main">
   <div class="card compose">
     <SafetyNote />
-    {!user.emailVerified && (
+    {!canTransact(user) && (
       <Notice tone="info"><p><a href={`${url("/verify-email")}?next=${encodeURIComponent(selfUrl)}`}>Confirm your email</a> to message sellers.</p></Notice>
     )}
     {error && <Notice tone="error"><p>{error}</p></Notice>}
@@ -52,11 +80,13 @@ if (Astro.request.method === "POST") {
         <span class="hint" id="f-body-hint">Ask about the car, its history, or when you could see it. Your email stays private.</span>
         <textarea id="f-body" name="body" rows="6" maxlength={MAX_MESSAGE} required aria-describedby="f-body-hint">{body}</textarea>
       </div>
-      <button class="btn" type="submit" disabled={!user.emailVerified}>Send message</button>
+      <button class="btn" type="submit" disabled={!canTransact(user)}>Send message</button>
     </form>
   </div>
   </div>
   </div>
+  </>
+  )}
 </Base>
 
 <style>

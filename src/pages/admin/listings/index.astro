@@ -1,0 +1,199 @@
+---
+import { and, desc, eq, or, sql, type SQL } from "drizzle-orm";
+import Base from "../../../layouts/Base.astro";
+import AdminNav from "../../../components/AdminNav.astro";
+import StatusBadge from "../../../components/StatusBadge.astro";
+import { getDb } from "../../../db/client";
+import { LISTING_STATUSES, listings, profiles, user as users, type ListingStatus } from "../../../db/schema";
+import { url } from "../../../lib/paths";
+import { formatPrice, listingTitle } from "../../../lib/listing-rules";
+import { STATUS_LABELS } from "../../../lib/listing-options";
+
+// Middleware already limits /app/admin to admins; check again here.
+if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
+
+const PER_PAGE = 50;
+const rawQ = (Astro.url.searchParams.get("q") ?? "").trim().slice(0, 200);
+// A pasted public link (…/listings/{slug}) searches for that slug.
+const fromUrl = /\/listings\/([a-z0-9-]+)\/?(?:[?#].*)?$/i.exec(rawQ)?.[1];
+const q = (fromUrl ?? rawQ).slice(0, 100);
+const page = Math.min(Math.max(1, Math.floor(Number(Astro.url.searchParams.get("page")) || 1)), 1000);
+const statusParam = Astro.url.searchParams.get("status") ?? "";
+const status = (LISTING_STATUSES as readonly string[]).includes(statusParam) ? (statusParam as ListingStatus) : null;
+
+const conditions: SQL[] = [];
+if (status) conditions.push(eq(listings.status, status));
+if (q) {
+  const pattern = `%${q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+  const like = (col: SQL | typeof listings.make) => sql`lower(${col}) like ${pattern} escape '\\'`;
+  conditions.push(
+    or(
+      like(sql`coalesce(${listings.year}, '') || ' ' || coalesce(${listings.make}, '') || ' ' || coalesce(${listings.model}, '')`),
+      like(sql`coalesce(${listings.slug}, '')`),
+      like(sql`${users.email}`),
+      like(sql`${users.name}`),
+      like(sql`coalesce(${profiles.displayName}, '')`),
+      eq(listings.id, q),
+    )!,
+  );
+}
+
+const rows = await getDb()
+  .select({
+    id: listings.id,
+    status: listings.status,
+    year: listings.year,
+    make: listings.make,
+    model: listings.model,
+    price: listings.price,
+    updatedAt: listings.updatedAt,
+    deletedAt: listings.deletedAt,
+    sellerName: profiles.displayName,
+    sellerEmail: users.email,
+  })
+  .from(listings)
+  .innerJoin(users, eq(users.id, listings.userId))
+  .leftJoin(profiles, eq(profiles.userId, listings.userId))
+  .where(conditions.length ? and(...conditions) : undefined)
+  .orderBy(desc(listings.updatedAt))
+  .limit(PER_PAGE + 1)
+  .offset((page - 1) * PER_PAGE)
+  .all();
+const hasNext = rows.length > PER_PAGE;
+if (hasNext) rows.pop();
+const pageHref = (n: number) => {
+  const sp = new URLSearchParams();
+  if (q) sp.set("q", q);
+  if (status) sp.set("status", status);
+  if (n > 1) sp.set("page", String(n));
+  const qs = sp.toString();
+  return `${url("/admin/listings")}${qs ? `?${qs}` : ""}`;
+};
+
+const fmtDate = (d: Date | null) =>
+  d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Los_Angeles" }) : "";
+const statuses = LISTING_STATUSES.filter((s) => s !== "awaiting_payment");
+---
+
+<Base title="All listings">
+  <AdminNav current="listings" />
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">Listings</h1>
+      <p class="lede">
+        {page > 1 || hasNext
+          ? `Page ${page}, most recently changed first.`
+          : `${rows.length} ${rows.length === 1 ? "listing" : "listings"}, most recently changed first.`}
+      </p>
+    </div>
+  </div>
+
+  <form class="filters" method="get" role="search">
+    <label class="sr-only" for="q">Car, seller, email, slug or public link</label>
+    <input id="q" name="q" type="search" value={q} maxlength={200} placeholder="Car, seller, email, slug or public link" autocomplete="off" />
+    <label class="sr-only" for="status">Status</label>
+    <select id="status" name="status">
+      <option value="">Any status</option>
+      {statuses.map((s) => <option value={s} selected={s === status}>{STATUS_LABELS[s] ?? s}</option>)}
+    </select>
+    <button class="btn btn--secondary" type="submit">Show</button>
+    {(q || status) && <a class="clear" href={url("/admin/listings")}>Clear</a>}
+  </form>
+
+  {
+    rows.length === 0 ? (
+      <p class="muted">No listings match. Try a different status or search.</p>
+    ) : (
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Car</th>
+            <th scope="col">Seller</th>
+            <th scope="col">Status</th>
+            <th scope="col" class="num">Price</th>
+            <th scope="col" class="num">Updated</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr>
+              <td><a class="car" href={url(`/admin/listings/${r.id}`)}>{listingTitle(r)}</a></td>
+              <td data-label="Seller">
+                {r.sellerName ?? "Member"}
+                <span class="sub">{r.sellerEmail}</span>
+              </td>
+              <td data-label="Status"><StatusBadge status={r.status} />{r.deletedAt && <span class="sub">Deleted by the seller</span>}</td>
+              <td data-label="Price" class="num">{r.price ? formatPrice(r.price) : "No price"}</td>
+              <td data-label="Updated" class="num">{fmtDate(r.updatedAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )
+  }
+  {
+    (page > 1 || hasNext) && (
+      <nav class="pager" aria-label="Pages">
+        {page > 1 ? <a class="btn btn--secondary" href={pageHref(page - 1)}>Previous</a> : <span />}
+        {hasNext && <a class="btn btn--secondary" href={pageHref(page + 1)}>Next</a>}
+      </nav>
+    )
+  }
+</Base>
+
+<style>
+  .filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+    margin-bottom: 20px;
+    max-width: 760px;
+  }
+  .filters input,
+  .filters select {
+    min-width: 0;
+    min-height: var(--tap);
+    padding: 10px 14px;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-btn);
+    background: var(--white);
+    font: inherit;
+    font-size: 16px;
+  }
+  .filters input {
+    flex: 1 1 240px;
+  }
+  .filters select {
+    flex: 0 1 200px;
+  }
+  .clear {
+    color: var(--muted);
+  }
+  .sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .car {
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .sub {
+    display: block;
+    color: var(--muted);
+    font-size: 14px;
+    overflow-wrap: anywhere;
+  }
+  .muted {
+    color: var(--muted);
+  }
+  .pager {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 20px;
+  }
+</style>
