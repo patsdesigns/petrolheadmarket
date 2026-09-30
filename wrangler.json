@@ -16,6 +16,7 @@
     {
       "binding": "DB",
       "database_name": "petrolheadmarket-db",
+      "database_id": "9dd206f1-0591-41cf-a894-8c1744dc426b",
       "migrations_dir": "drizzle"
     }
   ],
