@@ -19,8 +19,11 @@
   --ok-bg: rgba(26, 107, 60, 0.1);
   --ok-line: rgba(26, 107, 60, 0.22);
 
-  --font-ui: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* Barlow for text, Barlow Semi Condensed for headings, prices and the
+     small uppercase labels (badges, spec labels, eyebrows). */
+  --font-ui: "Barlow", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-head: "Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
+  --font-label: "Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
 
   --radius-card: 16px;
   --radius-tile: 16px;
@@ -168,17 +171,18 @@ main {
 h1,
 h2,
 h3 {
-  font-weight: 800;
+  font-family: var(--font-head);
+  font-weight: 700;
   line-height: 1.1;
   margin: 0 0 12px;
 }
 
 /* Page titles: sentence case. */
 .page-title {
-  font-size: 30px;
-  line-height: 1.15;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: 34px;
+  line-height: 1.1;
+  font-weight: 700;
+  letter-spacing: 0;
   margin: 0;
 }
 @media (max-width: 480px) {
@@ -188,10 +192,10 @@ h3 {
 }
 /* A car's own title */
 .car-title {
-  font-size: 42px;
-  line-height: 1.05;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-size: 46px;
+  line-height: 1.02;
+  font-weight: 700;
+  letter-spacing: 0;
   margin: 8px 0 0;
 }
 @media (max-width: 720px) {
@@ -205,10 +209,10 @@ h3 {
 .card > header > h2,
 .card > summary > h2 {
   margin: 0 0 14px;
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1.25;
-  font-weight: 800;
-  letter-spacing: -0.005em;
+  font-weight: 700;
+  letter-spacing: 0;
 }
 /* Eyebrow: small red mono label */
 .eyebrow {
@@ -217,7 +221,7 @@ h3 {
   gap: 4px 14px;
   margin: 0 0 6px;
   color: var(--red);
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -227,7 +231,7 @@ h3 {
   display: inline-block;
   margin-bottom: 14px;
   color: var(--muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 12px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -248,7 +252,7 @@ h3 {
 
 .mono,
 .label {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-size: 11px;
@@ -259,7 +263,7 @@ h3 {
 }
 
 .price {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-weight: 600;
 }
 
@@ -305,7 +309,7 @@ a.card:hover,
 .spec-row > :first-child {
   flex: none;
   white-space: nowrap;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-size: 11px;
@@ -317,7 +321,7 @@ a.card:hover,
 .badge {
   display: inline-flex;
   align-items: center;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   font-size: 10.5px;
@@ -536,7 +540,7 @@ legend {
   color: var(--ink);
 }
 .stat__n {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 30px;
   font-weight: 600;
   line-height: 1;
@@ -566,7 +570,7 @@ a.stat.is-alert:hover {
 }
 .table th {
   text-align: left;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -588,7 +592,7 @@ a.stat.is-alert:hover {
   background: rgba(255, 255, 255, 0.45);
 }
 .table .num {
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   text-align: right;
   white-space: nowrap;
 }
@@ -617,7 +621,7 @@ a.stat.is-alert:hover {
   }
   .table td[data-label]::before {
     content: attr(data-label) ": ";
-    font-family: var(--font-mono);
+    font-family: var(--font-label);
     font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.12em;
@@ -643,7 +647,7 @@ a.stat.is-alert:hover {
 }
 .fact__label {
   color: var(--muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -664,14 +668,14 @@ a.stat.is-alert:hover {
 /* The price box */
 .buy__label {
   color: var(--muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 .buy__price {
   margin-top: 4px;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 34px;
   line-height: 1.1;
   font-weight: 600;
@@ -729,7 +733,7 @@ a.stat.is-alert:hover {
   margin: 30px auto 0;
   padding: 0 16px 28px;
   color: var(--muted);
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 11px;
   text-align: center;
   letter-spacing: 0.06em;

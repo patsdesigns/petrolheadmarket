@@ -14,14 +14,16 @@ import { photoUrl } from "./paths";
 export const LOT_STATUSES = ["live", "offer_accepted"] as const;
 export const PER_PAGE = 24;
 
-export const ERAS = [
-  { value: "pre70", label: "Before 1970", from: 0, to: 1969 },
-  { value: "70s", label: "1970s", from: 1970, to: 1979 },
-  { value: "80s", label: "1980s", from: 1980, to: 1989 },
-  { value: "90s", label: "1990s", from: 1990, to: 1999 },
-  { value: "00s", label: "2000s", from: 2000, to: 2009 },
-  { value: "10s", label: "2010 and newer", from: 2010, to: 9999 },
+export const MILES = [
+  { value: "10k", label: "Under 10,000 miles", to: 9_999 },
+  { value: "25k", label: "Under 25,000 miles", to: 24_999 },
+  { value: "50k", label: "Under 50,000 miles", to: 49_999 },
+  { value: "100k", label: "Under 100,000 miles", to: 99_999 },
 ] as const;
+
+/** Years the year filter accepts. */
+const YEAR_MIN = 1900;
+const YEAR_MAX = 2100;
 
 export const PRICES = [
   { value: "u25", label: "Under $25,000", from: 0, to: 24_999 },
@@ -58,15 +60,21 @@ interface Row {
   locationState: string | null;
   headline: string | null;
   publishedAt: Date | null;
+  makeKey: string;
+  modelKey: string;
   hay: string;
 }
 
 export interface LotQuery {
   q: string;
+  ymin: number | null;
+  ymax: number | null;
+  make: string;
+  model: string;
+  miles: string;
   manual: boolean;
   records: boolean;
   price: string[];
-  era: string[];
   drive: string[];
   body: string[];
   seller: string[];
@@ -82,12 +90,26 @@ export function parseLotQuery(params: URLSearchParams): LotQuery {
   const list = (k: string) => params.getAll(k).flatMap((v) => v.split(","));
   const sort = params.get("sort");
   const page = Number(params.get("page"));
+  const year = (k: string) => {
+    const n = Number(params.get(k));
+    return Number.isInteger(n) && n >= YEAR_MIN && n <= YEAR_MAX ? n : null;
+  };
+  let [ymin, ymax] = [year("ymin"), year("ymax")];
+  if (ymin !== null && ymax !== null && ymin > ymax) [ymin, ymax] = [ymax, ymin];
+  const text = (k: string, max: number) => (params.get(k) ?? "").trim().slice(0, max);
+  const make = text("make", 40);
+  const miles = params.get("miles") ?? "";
   return {
-    q: (params.get("q") ?? "").trim().slice(0, 80),
+    q: text("q", 80),
+    ymin,
+    ymax,
+    make,
+    // A model only means something with its make.
+    model: make ? text("model", 60) : "",
+    miles: MILES.some((m) => m.value === miles) ? miles : "",
     manual: params.get("manual") === "1",
     records: params.get("records") === "1",
     price: pick(list("price"), PRICES).slice(0, 1),
-    era: pick(list("era"), ERAS),
     drive: pick(list("drive"), DRIVETRAINS),
     body: pick(list("body"), BODY_STYLES),
     seller: pick(list("seller"), [{ value: "private" }, { value: "dealer" }]),
@@ -101,8 +123,13 @@ export function lotHref(q: LotQuery, change: Partial<LotQuery> = {}): string {
   const s = { ...q, page: 1, ...change };
   const p = new URLSearchParams();
   if (s.q) p.set("q", s.q);
+  if (s.ymin !== null) p.set("ymin", String(s.ymin));
+  if (s.ymax !== null) p.set("ymax", String(s.ymax));
+  if (s.make) p.set("make", s.make);
+  if (s.make && s.model) p.set("model", s.model);
+  if (s.miles) p.set("miles", s.miles);
   if (s.manual) p.set("manual", "1");
-  for (const k of ["price", "era", "drive", "body", "seller"] as const) for (const v of s[k]) p.append(k, v);
+  for (const k of ["price", "drive", "body", "seller"] as const) for (const v of s[k]) p.append(k, v);
   if (s.records) p.set("records", "1");
   if (s.sort !== "new") p.set("sort", s.sort);
   if (s.page > 1) p.set("page", String(s.page));
@@ -119,7 +146,23 @@ export function norm(s: string): string {
     .trim();
 }
 
-type Group = "manual" | "price" | "era" | "drive" | "body" | "seller" | "records";
+type Group = "year" | "make" | "model" | "miles" | "manual" | "price" | "drive" | "body" | "seller" | "records";
+
+/** The filters that are set, apart from the search box. */
+export function activeFilterCount(q: LotQuery): number {
+  return (
+    (q.ymin !== null || q.ymax !== null ? 1 : 0) +
+    (q.make ? 1 : 0) +
+    (q.model ? 1 : 0) +
+    (q.miles ? 1 : 0) +
+    (q.manual ? 1 : 0) +
+    (q.records ? 1 : 0) +
+    q.price.length +
+    q.drive.length +
+    q.body.length +
+    q.seller.length
+  );
+}
 
 function inRange(n: number | null, ranges: readonly { value: string; from: number; to: number }[], picked: string[]) {
   return n !== null && picked.some((v) => {
@@ -128,16 +171,21 @@ function inRange(n: number | null, ranges: readonly { value: string; from: numbe
   });
 }
 
-/** Does a car pass every active filter (except `skip`, for that group's counts)? */
-function passes(c: Row, q: LotQuery, terms: string[], skip?: Group): boolean {
+/** Does a car pass every active filter (except the `skip` groups, for their counts)? */
+function passes(c: Row, q: LotQuery, terms: string[], ...skip: Group[]): boolean {
+  const on = (g: Group) => !skip.includes(g);
   if (terms.some((t) => !c.hay.includes(` ${t}`))) return false;
-  if (skip !== "manual" && q.manual && !MANUALS.includes(c.transmission ?? "")) return false;
-  if (skip !== "records" && q.records && !c.recordsOnFile) return false;
-  if (skip !== "price" && q.price.length && !inRange(c.price, PRICES, q.price)) return false;
-  if (skip !== "era" && q.era.length && !inRange(c.year, ERAS, q.era)) return false;
-  if (skip !== "drive" && q.drive.length && !q.drive.includes(c.drivetrain ?? "")) return false;
-  if (skip !== "body" && q.body.length && !q.body.includes(c.bodyStyle ?? "")) return false;
-  if (skip !== "seller" && q.seller.length && !q.seller.includes(c.sellerType)) return false;
+  if (on("year") && q.ymin !== null && (c.year === null || c.year < q.ymin)) return false;
+  if (on("year") && q.ymax !== null && (c.year === null || c.year > q.ymax)) return false;
+  if (on("make") && q.make && c.makeKey !== norm(q.make)) return false;
+  if (on("model") && q.model && c.modelKey !== norm(q.model)) return false;
+  if (on("miles") && q.miles && !(c.mileage !== null && c.mileage <= (MILES.find((m) => m.value === q.miles)?.to ?? 0))) return false;
+  if (on("manual") && q.manual && !MANUALS.includes(c.transmission ?? "")) return false;
+  if (on("records") && q.records && !c.recordsOnFile) return false;
+  if (on("price") && q.price.length && !inRange(c.price, PRICES, q.price)) return false;
+  if (on("drive") && q.drive.length && !q.drive.includes(c.drivetrain ?? "")) return false;
+  if (on("body") && q.body.length && !q.body.includes(c.bodyStyle ?? "")) return false;
+  if (on("seller") && q.seller.length && !q.seller.includes(c.sellerType)) return false;
   return true;
 }
 
@@ -183,7 +231,11 @@ export interface LotResult {
   pages: number;
   cards: LotCard[];
   /** For each filter group, how many cars each choice would show. */
-  counts: Record<Group, Record<string, number>>;
+  counts: Record<"manual" | "price" | "miles" | "drive" | "body" | "seller" | "records", Record<string, number>>;
+  /** Choices for the year, make and model menus, from the cars on the Lot. */
+  years: number[];
+  makes: { name: string; n: number }[];
+  models: { name: string; n: number }[];
 }
 
 export async function queryLot(q: LotQuery): Promise<LotResult> {
@@ -213,6 +265,8 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
 
   const rows: Row[] = raw.map((r) => ({
     ...r,
+    makeKey: norm(r.make ?? ""),
+    modelKey: norm(r.model ?? ""),
     hay: ` ${norm(
       [
         r.year,
@@ -234,11 +288,37 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
   const matched = rows.filter((c) => passes(c, q, terms)).sort((a, b) => SORTERS[q.sort](a, b) || a.id.localeCompare(b.id));
 
   const countFor = (group: Group, test: (c: Row) => boolean) => rows.filter((c) => passes(c, q, terms, group) && test(c)).length;
+
+  // Menus list what the other filters leave, with the chosen values kept so
+  // a choice never disappears from its own menu. Makes ignore the model too.
+  const years = [...new Set(rows.filter((c) => passes(c, q, terms, "year")).flatMap((c) => (c.year === null ? [] : [c.year])))];
+  for (const y of [q.ymin, q.ymax]) if (y !== null && !years.includes(y)) years.push(y);
+  years.sort((a, b) => b - a);
+  const tally = (list: Row[], key: (c: Row) => string, name: (c: Row) => string | null) => {
+    const m = new Map<string, { name: string; n: number }>();
+    for (const c of list) {
+      const k = key(c);
+      const label = name(c);
+      if (!k || !label) continue;
+      const e = m.get(k) ?? { name: label, n: 0 };
+      e.n++;
+      m.set(k, e);
+    }
+    return m;
+  };
+  const makeMap = tally(rows.filter((c) => passes(c, q, terms, "make", "model")), (c) => c.makeKey, (c) => c.make);
+  if (q.make && !makeMap.has(norm(q.make))) makeMap.set(norm(q.make), { name: q.make, n: 0 });
+  const modelMap = q.make
+    ? tally(rows.filter((c) => passes(c, q, terms, "model")), (c) => c.modelKey, (c) => c.model)
+    : new Map<string, { name: string; n: number }>();
+  if (q.model && !modelMap.has(norm(q.model))) modelMap.set(norm(q.model), { name: q.model, n: 0 });
+  const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "en", { sensitivity: "base", numeric: true });
+
   const counts: LotResult["counts"] = {
     manual: { "1": countFor("manual", (c) => MANUALS.includes(c.transmission ?? "")) },
     records: { "1": countFor("records", (c) => c.recordsOnFile) },
     price: Object.fromEntries(PRICES.map((p) => [p.value, countFor("price", (c) => inRange(c.price, PRICES, [p.value]))])),
-    era: Object.fromEntries(ERAS.map((e) => [e.value, countFor("era", (c) => inRange(c.year, ERAS, [e.value]))])),
+    miles: Object.fromEntries(MILES.map((m) => [m.value, countFor("miles", (c) => c.mileage !== null && c.mileage <= m.to)])),
     drive: Object.fromEntries(DRIVETRAINS.map((d) => [d.value, countFor("drive", (c) => c.drivetrain === d.value)])),
     body: Object.fromEntries(BODY_STYLES.map((b) => [b.value, countFor("body", (c) => c.bodyStyle === b.value)])),
     seller: {
@@ -251,7 +331,17 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
   const page = Math.min(q.page, pages);
   const pageIds = matched.slice((page - 1) * PER_PAGE, page * PER_PAGE).map((c) => c.id);
   const cards = pageIds.length ? await cardsFor(pageIds) : [];
-  return { total: matched.length, lotSize: rows.length, page, pages, cards, counts };
+  return {
+    total: matched.length,
+    lotSize: rows.length,
+    page,
+    pages,
+    cards,
+    counts,
+    years,
+    makes: [...makeMap.values()].sort(byName),
+    models: [...modelMap.values()].sort(byName),
+  };
 }
 
 /** Full card data, in the given order, for one page of cars (at most PER_PAGE ids). */

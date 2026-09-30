@@ -25,7 +25,7 @@
 }
 .pu__status {
   margin: 16px 0 4px;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   text-transform: uppercase;
   letter-spacing: 0.12em;
   font-size: 12px;
@@ -127,7 +127,7 @@
   position: absolute;
   top: 6px;
   left: 6px;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 10px;
   font-weight: 600;
   text-transform: uppercase;

@@ -23,7 +23,7 @@
 }
 .mt__who {
   display: block;
-  font-family: var(--font-mono);
+  font-family: var(--font-label);
   font-size: 10px;
   text-transform: uppercase;
   letter-spacing: 0.12em;

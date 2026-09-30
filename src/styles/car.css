@@ -48,7 +48,7 @@
   border-radius: 999px;
   background: var(--red);
   color: #fff;
-  font: 500 11px var(--font-mono);
+  font: 500 11px var(--font-label);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   pointer-events: none;
@@ -93,7 +93,7 @@
   border-radius: 999px;
   background: rgba(21, 23, 27, 0.6);
   color: #fff;
-  font: 500 11px var(--font-mono);
+  font: 500 11px var(--font-label);
   letter-spacing: 0.1em;
   pointer-events: none;
 }
@@ -138,7 +138,7 @@
   place-items: center;
   aspect-ratio: 16 / 10;
   border-radius: 20px;
-  font: 500 12px var(--font-mono);
+  font: 500 12px var(--font-label);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -266,7 +266,7 @@
   padding-top: 12px;
   border-top: 1px solid var(--hair);
   color: var(--muted);
-  font: 12px var(--font-mono);
+  font: 12px var(--font-label);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
@@ -313,7 +313,7 @@
     color: #fff;
   }
   .car-bar__price {
-    font: 600 18px var(--font-mono);
+    font: 600 18px var(--font-label);
   }
   main {
     padding-bottom: 110px;
