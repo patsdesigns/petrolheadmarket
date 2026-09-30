@@ -109,6 +109,71 @@
   margin: 0;
   font-size: 22px;
 }
+/* Price and miles: typed ranges, side by side above the checkboxes. */
+.more__ranges {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 32px;
+  margin-bottom: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--hair);
+}
+.more__range {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.more__range legend {
+  margin: 0 0 6px;
+  padding: 0;
+  color: var(--muted);
+  font: 600 12px var(--font-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.more__pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.more__to {
+  color: var(--muted);
+  font-size: 14px;
+}
+.more__num {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.more__num input {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.85);
+  color: var(--ink);
+  font: 500 15px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+.more__unit + input {
+  padding-left: 24px;
+}
+.more__unit {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--muted);
+  font-size: 15px;
+  pointer-events: none;
+}
+.more__num input:focus {
+  outline: none;
+  border-color: var(--red);
+  box-shadow: 0 0 0 4px rgba(213, 0, 28, 0.15);
+}
 .more__groups {
   column-count: 3;
   column-gap: 32px;
@@ -562,6 +627,9 @@
   }
   .more__groups {
     column-count: 2;
+  }
+  .more__ranges {
+    grid-template-columns: minmax(0, 1fr);
   }
   .more__opt {
     min-height: 44px;

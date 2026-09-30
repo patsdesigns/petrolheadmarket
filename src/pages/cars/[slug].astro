@@ -44,6 +44,7 @@ const q = `?listing=${encodeURIComponent(listing.slug!)}`;
 
 const facts = [
   ["Year", listing.year],
+  ["Trim", listing.trim],
   ["Mileage", formatMiles(listing.mileage)],
   ["Transmission", optionLabel(TRANSMISSIONS, listing.transmission)],
   ["Drivetrain", optionLabel(DRIVETRAINS, listing.drivetrain)],

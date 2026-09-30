@@ -62,6 +62,7 @@ export const FIELD_RULES = {
   year: whole("a year", 1886, () => new Date().getUTCFullYear() + 1),
   make: text(40),
   model: text(60),
+  trim: text(40),
   bodyStyle: choice(values(BODY_STYLES), "Pick a body style."),
   engine: text(60),
   transmission: choice(values(TRANSMISSIONS), "Pick a transmission."),
@@ -133,7 +134,7 @@ export const STEPS = [
   {
     key: "car",
     title: "The Car",
-    fields: ["year", "make", "model", "bodyStyle", "engine", "transmission", "drivetrain", "exteriorColor", "interiorColor", "mileage", "vin", "headline"],
+    fields: ["year", "make", "model", "trim", "bodyStyle", "engine", "transmission", "drivetrain", "exteriorColor", "interiorColor", "mileage", "vin", "headline"],
   },
   {
     key: "history",

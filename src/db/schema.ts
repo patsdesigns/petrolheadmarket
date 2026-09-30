@@ -55,6 +55,7 @@ export const listings = sqliteTable(
     year: integer("year"),
     make: text("make"),
     model: text("model"),
+    trim: text("trim"),
     bodyStyle: text("body_style"),
     engine: text("engine"),
     transmission: text("transmission"),

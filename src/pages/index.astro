@@ -1,14 +1,15 @@
 ---
 // The Lot: every car for sale. The search box lives in the site header (on
 // this page it belongs to this form, form="lot"); here a row of filter chips
-// (year, make, model, miles, price, and More filters for the rest), the
+// (year, make, model, trim, exterior color, and More filters for price,
+// miles and the rest), the
 // newest arrival as a showcase, then the grid. A plain GET form, so it works
 // without JavaScript and every search can be shared or bookmarked; a small
 // script applies the chips as soon as they change.
 import Base from "../layouts/Base.astro";
 import { BODY_STYLES, DRIVETRAINS } from "../lib/listing-options";
 import { formatMiles, formatPrice } from "../lib/listing-rules";
-import { MILES, PRICES, SORTS, activeFilterCount, listedAgo, lotHref, norm, parseLotQuery, queryLot, type LotCard, type LotQuery } from "../lib/lot";
+import { SORTS, activeFilterCount, listedAgo, lotHref, norm, parseLotQuery, queryLot, type LotCard, type LotQuery } from "../lib/lot";
 import { carUrl, url } from "../lib/paths";
 import "../styles/lot.css";
 
@@ -35,10 +36,14 @@ const isOn = (key: keyof LotQuery, value: string) => {
   const v = q[key];
   return Array.isArray(v) ? v.includes(value) : v === true && value === "1";
 };
-const moreOn = moreGroups.reduce((n, g) => n + g.options.filter((o) => isOn(g.key, o.value)).length, 0);
+const hasPrice = q.pmin !== null || q.pmax !== null;
+const hasMiles = q.mmin !== null || q.mmax !== null;
+const moreOn = moreGroups.reduce((n, g) => n + g.options.filter((o) => isOn(g.key, o.value)).length, 0) + (hasPrice ? 1 : 0) + (hasMiles ? 1 : 0);
+const typed = (n: number | null) => (n === null ? "" : n.toLocaleString("en-US"));
+const clearMore: Partial<LotQuery> = { manual: false, records: false, drive: [], body: [], seller: [], pmin: null, pmax: null, mmin: null, mmax: null };
 
 const anyFilter = activeFilterCount(q) > 0;
-const noFilters: Partial<LotQuery> = { ymin: null, ymax: null, make: "", model: "", miles: "", manual: false, records: false, price: [], drive: [], body: [], seller: [] };
+const noFilters: Partial<LotQuery> = { ymin: null, ymax: null, make: "", model: "", trim: "", color: "", ...clearMore };
 const plain = !q.q && !anyFilter && q.sort === "new" && lot.page === 1;
 
 // The newest car leads page 1 of the plain Lot when there are enough cars.
@@ -88,25 +93,20 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
         <option value="">Model</option>
         {lot.models.map((m) => <option value={m.name} selected={norm(m.name) === norm(q.model)}>{m.name}</option>)}
       </select>
-      <select class:list={["chip", { "is-set": !!q.miles }]} name="miles" aria-label="Miles">
-        <option value="">Miles</option>
-        {
-          MILES.map((m) => (
-            <option value={m.value} selected={m.value === q.miles} disabled={!lot.counts.miles[m.value] && m.value !== q.miles}>
-              {m.label}
-            </option>
-          ))
-        }
+      <select
+        id="qf-trim"
+        class:list={["chip", { "is-set": !!q.trim }]}
+        name="trim"
+        aria-label={q.model ? "Trim" : "Trim (pick a model first)"}
+        title={q.model ? undefined : "Pick a model first"}
+        disabled={!q.model}
+      >
+        <option value="">Trim</option>
+        {lot.trims.map((t) => <option value={t.name} selected={norm(t.name) === norm(q.trim)}>{t.name}</option>)}
       </select>
-      <select class:list={["chip", { "is-set": q.price.length > 0 }]} name="price" aria-label="Price">
-        <option value="">Price</option>
-        {
-          PRICES.map((p) => (
-            <option value={p.value} selected={q.price.includes(p.value)} disabled={!lot.counts.price[p.value] && !q.price.includes(p.value)}>
-              {p.label}
-            </option>
-          ))
-        }
+      <select class:list={["chip", { "is-set": !!q.color }]} name="color" aria-label="Exterior color">
+        <option value="">Ext. Color</option>
+        {lot.colors.map((c) => <option value={c.value} selected={c.value === q.color}>{c.label}</option>)}
       </select>
 
       <details class="chip-more" data-more>
@@ -126,6 +126,38 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
         <div class="more">
           <div class="more__head">
             <h2 class="more__title">More Filters</h2>
+          </div>
+          <div class="more__ranges">
+            <fieldset class="more__range">
+              <legend>Price</legend>
+              <div class="more__pair">
+                <label class="more__num">
+                  <span class="sr-only">Lowest price</span>
+                  <span class="more__unit" aria-hidden="true">$</span>
+                  <input name="price_min" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="From" value={typed(q.pmin)} />
+                </label>
+                <span class="more__to" aria-hidden="true">to</span>
+                <label class="more__num">
+                  <span class="sr-only">Highest price</span>
+                  <span class="more__unit" aria-hidden="true">$</span>
+                  <input name="price_max" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="To" value={typed(q.pmax)} />
+                </label>
+              </div>
+            </fieldset>
+            <fieldset class="more__range">
+              <legend>Miles</legend>
+              <div class="more__pair">
+                <label class="more__num">
+                  <span class="sr-only">Fewest miles</span>
+                  <input name="miles_min" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="From" value={typed(q.mmin)} />
+                </label>
+                <span class="more__to" aria-hidden="true">to</span>
+                <label class="more__num">
+                  <span class="sr-only">Most miles</span>
+                  <input name="miles_max" inputmode="numeric" autocomplete="off" maxlength="11" placeholder="To" value={typed(q.mmax)} />
+                </label>
+              </div>
+            </fieldset>
           </div>
           <div class="more__groups">
             {
@@ -148,7 +180,7 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
             }
           </div>
           <div class="more__foot">
-            {moreOn > 0 && <a class="lot__clear" href={lotHref(q, { manual: false, records: false, drive: [], body: [], seller: [] })}>Clear these</a>}
+            {moreOn > 0 && <a class="lot__clear" href={lotHref(q, clearMore)}>Clear these</a>}
             <button class="btn" type="submit">Show results</button>
           </div>
         </div>
@@ -326,18 +358,24 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
     form.classList.add("is-live");
     // Only send the fields that are set, so the address stays short.
     form.addEventListener("formdata", (e) => {
-      const keep = [...e.formData.entries()].filter(([k, v]) => v !== "" && !(k === "sort" && v === "new"));
+      // Typed prices and miles go without "$" and commas ("$25,000" is 25000).
+      const clean = ([k, v]: [string, FormDataEntryValue]): [string, FormDataEntryValue] =>
+        /_(min|max)$/.test(k) && typeof v === "string" ? [k, v.replace(/[$,\s]/g, "")] : [k, v];
+      const keep = [...e.formData.entries()].map(clean).filter(([k, v]) => v !== "" && !(k === "sort" && v === "new"));
       for (const k of new Set([...e.formData.keys()])) e.formData.delete(k);
       for (const [k, v] of keep) e.formData.append(k, v);
     });
     form.addEventListener("change", (e) => {
       const t = e.target as HTMLInputElement;
-      if (t.name === "q" || t.type === "checkbox") return;
-      // A new make starts with all of its models.
-      if (t.name === "make") {
-        const model = document.getElementById("qf-model") as HTMLSelectElement | null;
-        if (model) model.value = "";
-      }
+      // More filters (and the search box) apply with their buttons.
+      if (t.name === "q" || more?.contains(t)) return;
+      // A new make starts with all of its models, a new model with all of its trims.
+      const clear = (id: string) => {
+        const sel = document.getElementById(id) as HTMLSelectElement | null;
+        if (sel) sel.value = "";
+      };
+      if (t.name === "make") clear("qf-model");
+      if (t.name === "make" || t.name === "model") clear("qf-trim");
       form.requestSubmit();
     });
     document.addEventListener("keydown", (e) => {

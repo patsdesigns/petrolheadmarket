@@ -285,6 +285,7 @@ const fmtDate = (d: Date | null | undefined) =>
             <Field name="make" label="Make" value={v("make")} error={errors.make} maxlength={40} required={false} />
             <Field name="model" label="Model" value={v("model")} error={errors.model} maxlength={60} required={false} />
           </div>
+          <Field name="trim" label="Trim" value={v("trim")} error={errors.trim} maxlength={40} required={false} />
           <Field name="headline" label="Headline" value={v("headline")} error={errors.headline} maxlength={90} required={false} />
           <div class="field-row">
             <Field name="mileage" label="Mileage" inputmode="numeric" value={v("mileage")} error={errors.mileage} required={false} />

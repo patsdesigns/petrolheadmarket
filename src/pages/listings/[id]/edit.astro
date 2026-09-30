@@ -181,6 +181,7 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
         <form method="post" data-autosave data-login={loginHref} novalidate>
           <input type="hidden" name="step" value="car" />
           <CarPicker year={v("year")} make={v("make")} model={v("model")} errors={errors} />
+          <Field name="trim" label="Trim" value={v("trim")} error={errors.trim} maxlength={40} required={false} hint="Optional. Like Carrera 4S, GT3 or Sport" />
           <Field name="headline" label="Headline" value={v("headline")} error={errors.headline} maxlength={90} required={false}
             hint="One line that makes a buyer stop scrolling. Like: Two owners, full records, fresh clutch." />
           <div class="field-row">

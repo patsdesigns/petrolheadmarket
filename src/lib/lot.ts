@@ -14,23 +14,34 @@ import { photoUrl } from "./paths";
 export const LOT_STATUSES = ["live", "offer_accepted"] as const;
 export const PER_PAGE = 24;
 
-export const MILES = [
-  { value: "10k", label: "Under 10,000 miles", to: 9_999 },
-  { value: "25k", label: "Under 25,000 miles", to: 24_999 },
-  { value: "50k", label: "Under 50,000 miles", to: 49_999 },
-  { value: "100k", label: "Under 100,000 miles", to: 99_999 },
+/** Exterior color families for the Ext. Color filter. Sellers type the
+ * color freely ("Guards Red", "Light Ivory"), so a car joins the first
+ * family with a word in its color; anything else is Other. */
+export const COLORS = [
+  { value: "black", label: "Black", words: ["black", "obsidian", "onyx", "ebony", "jet", "basalt"] },
+  { value: "white", label: "White", words: ["white", "ivory", "cream", "alabaster", "chalk", "pearl"] },
+  { value: "silver", label: "Silver", words: ["silver", "platinum", "aluminum"] },
+  { value: "gray", label: "Gray", words: ["gray", "grey", "graphite", "gunmetal", "charcoal", "slate", "nardo"] },
+  { value: "red", label: "Red", words: ["red", "maroon", "burgundy", "crimson", "ruby", "garnet", "rosso"] },
+  { value: "blue", label: "Blue", words: ["blue", "navy", "cobalt", "azure", "teal"] },
+  { value: "green", label: "Green", words: ["green", "olive", "emerald", "lime"] },
+  { value: "yellow", label: "Yellow", words: ["yellow", "gold"] },
+  { value: "orange", label: "Orange", words: ["orange", "copper", "tangerine"] },
+  { value: "brown", label: "Brown or tan", words: ["brown", "tan", "beige", "bronze", "champagne", "sand", "khaki"] },
+  { value: "purple", label: "Purple", words: ["purple", "violet", "plum"] },
+  { value: "other", label: "Other", words: [] },
 ] as const;
+
+/** The color family for a seller's color text ("" when no color was given). */
+export function colorFamily(color: string | null): string {
+  const words = norm(color ?? "").split(" ").filter(Boolean);
+  if (!words.length) return "";
+  return COLORS.find((c) => c.words.some((w) => words.includes(w)))?.value ?? "other";
+}
 
 /** Years the year filter accepts. */
 const YEAR_MIN = 1900;
 const YEAR_MAX = 2100;
-
-export const PRICES = [
-  { value: "u25", label: "Under $25,000", from: 0, to: 24_999 },
-  { value: "25-50", label: "$25,000 to $50,000", from: 25_000, to: 50_000 },
-  { value: "50-100", label: "$50,000 to $100,000", from: 50_000, to: 100_000 },
-  { value: "100up", label: "$100,000 and up", from: 100_000, to: Number.MAX_SAFE_INTEGER },
-] as const;
 
 export const SORTS = [
   { value: "new", label: "Newest listings" },
@@ -49,6 +60,8 @@ interface Row {
   year: number | null;
   make: string | null;
   model: string | null;
+  trim: string | null;
+  exteriorColor: string | null;
   price: number | null;
   mileage: number | null;
   transmission: string | null;
@@ -62,6 +75,8 @@ interface Row {
   publishedAt: Date | null;
   makeKey: string;
   modelKey: string;
+  trimKey: string;
+  colorKey: string;
   hay: string;
 }
 
@@ -71,10 +86,14 @@ export interface LotQuery {
   ymax: number | null;
   make: string;
   model: string;
-  miles: string;
+  trim: string;
+  color: string;
+  pmin: number | null;
+  pmax: number | null;
+  mmin: number | null;
+  mmax: number | null;
   manual: boolean;
   records: boolean;
-  price: string[];
   drive: string[];
   body: string[];
   seller: string[];
@@ -98,7 +117,17 @@ export function parseLotQuery(params: URLSearchParams): LotQuery {
   if (ymin !== null && ymax !== null && ymin > ymax) [ymin, ymax] = [ymax, ymin];
   const text = (k: string, max: number) => (params.get(k) ?? "").trim().slice(0, max);
   const make = text("make", 40);
-  const miles = params.get("miles") ?? "";
+  // Price and miles are typed ("$25,000", "60k" is not a number): digits only.
+  const amount = (k: string) => {
+    const digits = (params.get(k) ?? "").replace(/[$,\s]/g, "");
+    const n = Number(digits);
+    return digits && /^\d{1,9}$/.test(digits) ? n : null;
+  };
+  let [pmin, pmax] = [amount("price_min"), amount("price_max")];
+  if (pmin !== null && pmax !== null && pmin > pmax) [pmin, pmax] = [pmax, pmin];
+  let [mmin, mmax] = [amount("miles_min"), amount("miles_max")];
+  if (mmin !== null && mmax !== null && mmin > mmax) [mmin, mmax] = [mmax, mmin];
+  const color = params.get("color") ?? "";
   return {
     q: text("q", 80),
     ymin,
@@ -106,10 +135,15 @@ export function parseLotQuery(params: URLSearchParams): LotQuery {
     make,
     // A model only means something with its make.
     model: make ? text("model", 60) : "",
-    miles: MILES.some((m) => m.value === miles) ? miles : "",
+    // A trim only means something with its model.
+    trim: make && params.get("model") ? text("trim", 40) : "",
+    color: COLORS.some((c) => c.value === color) ? color : "",
+    pmin,
+    pmax,
+    mmin,
+    mmax,
     manual: params.get("manual") === "1",
     records: params.get("records") === "1",
-    price: pick(list("price"), PRICES).slice(0, 1),
     drive: pick(list("drive"), DRIVETRAINS),
     body: pick(list("body"), BODY_STYLES),
     seller: pick(list("seller"), [{ value: "private" }, { value: "dealer" }]),
@@ -127,9 +161,14 @@ export function lotHref(q: LotQuery, change: Partial<LotQuery> = {}): string {
   if (s.ymax !== null) p.set("ymax", String(s.ymax));
   if (s.make) p.set("make", s.make);
   if (s.make && s.model) p.set("model", s.model);
-  if (s.miles) p.set("miles", s.miles);
+  if (s.make && s.model && s.trim) p.set("trim", s.trim);
+  if (s.color) p.set("color", s.color);
+  if (s.pmin !== null) p.set("price_min", String(s.pmin));
+  if (s.pmax !== null) p.set("price_max", String(s.pmax));
+  if (s.mmin !== null) p.set("miles_min", String(s.mmin));
+  if (s.mmax !== null) p.set("miles_max", String(s.mmax));
   if (s.manual) p.set("manual", "1");
-  for (const k of ["price", "drive", "body", "seller"] as const) for (const v of s[k]) p.append(k, v);
+  for (const k of ["drive", "body", "seller"] as const) for (const v of s[k]) p.append(k, v);
   if (s.records) p.set("records", "1");
   if (s.sort !== "new") p.set("sort", s.sort);
   if (s.page > 1) p.set("page", String(s.page));
@@ -146,7 +185,7 @@ export function norm(s: string): string {
     .trim();
 }
 
-type Group = "year" | "make" | "model" | "miles" | "manual" | "price" | "drive" | "body" | "seller" | "records";
+type Group = "year" | "make" | "model" | "trim" | "color" | "miles" | "manual" | "price" | "drive" | "body" | "seller" | "records";
 
 /** The filters that are set, apart from the search box. */
 export function activeFilterCount(q: LotQuery): number {
@@ -154,21 +193,21 @@ export function activeFilterCount(q: LotQuery): number {
     (q.ymin !== null || q.ymax !== null ? 1 : 0) +
     (q.make ? 1 : 0) +
     (q.model ? 1 : 0) +
-    (q.miles ? 1 : 0) +
+    (q.trim ? 1 : 0) +
+    (q.color ? 1 : 0) +
+    (q.pmin !== null || q.pmax !== null ? 1 : 0) +
+    (q.mmin !== null || q.mmax !== null ? 1 : 0) +
     (q.manual ? 1 : 0) +
     (q.records ? 1 : 0) +
-    q.price.length +
     q.drive.length +
     q.body.length +
     q.seller.length
   );
 }
 
-function inRange(n: number | null, ranges: readonly { value: string; from: number; to: number }[], picked: string[]) {
-  return n !== null && picked.some((v) => {
-    const r = ranges.find((x) => x.value === v);
-    return !!r && n >= r.from && n <= r.to;
-  });
+/** Is n within the typed range (either end may be open)? Cars without the number never match. */
+function between(n: number | null, min: number | null, max: number | null): boolean {
+  return n !== null && (min === null || n >= min) && (max === null || n <= max);
 }
 
 /** Does a car pass every active filter (except the `skip` groups, for their counts)? */
@@ -179,10 +218,12 @@ function passes(c: Row, q: LotQuery, terms: string[], ...skip: Group[]): boolean
   if (on("year") && q.ymax !== null && (c.year === null || c.year > q.ymax)) return false;
   if (on("make") && q.make && c.makeKey !== norm(q.make)) return false;
   if (on("model") && q.model && c.modelKey !== norm(q.model)) return false;
-  if (on("miles") && q.miles && !(c.mileage !== null && c.mileage <= (MILES.find((m) => m.value === q.miles)?.to ?? 0))) return false;
+  if (on("trim") && q.trim && c.trimKey !== norm(q.trim)) return false;
+  if (on("color") && q.color && c.colorKey !== q.color) return false;
+  if (on("miles") && (q.mmin !== null || q.mmax !== null) && !between(c.mileage, q.mmin, q.mmax)) return false;
+  if (on("price") && (q.pmin !== null || q.pmax !== null) && !between(c.price, q.pmin, q.pmax)) return false;
   if (on("manual") && q.manual && !MANUALS.includes(c.transmission ?? "")) return false;
   if (on("records") && q.records && !c.recordsOnFile) return false;
-  if (on("price") && q.price.length && !inRange(c.price, PRICES, q.price)) return false;
   if (on("drive") && q.drive.length && !q.drive.includes(c.drivetrain ?? "")) return false;
   if (on("body") && q.body.length && !q.body.includes(c.bodyStyle ?? "")) return false;
   if (on("seller") && q.seller.length && !q.seller.includes(c.sellerType)) return false;
@@ -231,11 +272,14 @@ export interface LotResult {
   pages: number;
   cards: LotCard[];
   /** For each filter group, how many cars each choice would show. */
-  counts: Record<"manual" | "price" | "miles" | "drive" | "body" | "seller" | "records", Record<string, number>>;
+  counts: Record<"manual" | "drive" | "body" | "seller" | "records", Record<string, number>>;
   /** Choices for the year, make and model menus, from the cars on the Lot. */
   years: number[];
   makes: { name: string; n: number }[];
   models: { name: string; n: number }[];
+  trims: { name: string; n: number }[];
+  /** Color families that have cars (the chosen one always kept). */
+  colors: { value: string; label: string; n: number }[];
 }
 
 export async function queryLot(q: LotQuery): Promise<LotResult> {
@@ -247,6 +291,8 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
       year: listings.year,
       make: listings.make,
       model: listings.model,
+      trim: listings.trim,
+      exteriorColor: listings.exteriorColor,
       price: listings.price,
       mileage: listings.mileage,
       transmission: listings.transmission,
@@ -267,11 +313,15 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
     ...r,
     makeKey: norm(r.make ?? ""),
     modelKey: norm(r.model ?? ""),
+    trimKey: norm(r.trim ?? ""),
+    colorKey: colorFamily(r.exteriorColor),
     hay: ` ${norm(
       [
         r.year,
         r.make,
         r.model,
+        r.trim,
+        r.exteriorColor,
         r.locationCity,
         r.locationState,
         optionLabels(BODY_STYLES, r.bodyStyle),
@@ -312,13 +362,19 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
     ? tally(rows.filter((c) => passes(c, q, terms, "model")), (c) => c.modelKey, (c) => c.model)
     : new Map<string, { name: string; n: number }>();
   if (q.model && !modelMap.has(norm(q.model))) modelMap.set(norm(q.model), { name: q.model, n: 0 });
+  const trimMap = q.model
+    ? tally(rows.filter((c) => passes(c, q, terms, "trim")), (c) => c.trimKey, (c) => c.trim)
+    : new Map<string, { name: string; n: number }>();
+  if (q.trim && !trimMap.has(norm(q.trim))) trimMap.set(norm(q.trim), { name: q.trim, n: 0 });
+  const colorRows = rows.filter((c) => passes(c, q, terms, "color"));
+  const colors = COLORS.map((c) => ({ value: c.value, label: c.label, n: colorRows.filter((r) => r.colorKey === c.value).length })).filter(
+    (c) => c.n > 0 || c.value === q.color,
+  );
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "en", { sensitivity: "base", numeric: true });
 
   const counts: LotResult["counts"] = {
     manual: { "1": countFor("manual", (c) => MANUALS.includes(c.transmission ?? "")) },
     records: { "1": countFor("records", (c) => c.recordsOnFile) },
-    price: Object.fromEntries(PRICES.map((p) => [p.value, countFor("price", (c) => inRange(c.price, PRICES, [p.value]))])),
-    miles: Object.fromEntries(MILES.map((m) => [m.value, countFor("miles", (c) => c.mileage !== null && c.mileage <= m.to)])),
     drive: Object.fromEntries(DRIVETRAINS.map((d) => [d.value, countFor("drive", (c) => c.drivetrain === d.value)])),
     body: Object.fromEntries(BODY_STYLES.map((b) => [b.value, countFor("body", (c) => c.bodyStyle === b.value)])),
     seller: {
@@ -341,6 +397,8 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
     years,
     makes: [...makeMap.values()].sort(byName),
     models: [...modelMap.values()].sort(byName),
+    trims: [...trimMap.values()].sort(byName),
+    colors,
   };
 }
 

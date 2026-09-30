@@ -148,6 +148,7 @@ const deleteConfirm =
         <div class="fact"><div class="fact__label">Transmission</div><div class="fact__val">{optionLabel(TRANSMISSIONS, listing.transmission) || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">Drivetrain</div><div class="fact__val">{optionLabel(DRIVETRAINS, listing.drivetrain) || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">Body</div><div class="fact__val">{optionLabel(BODY_STYLES, listing.bodyStyle) || "Not set"}</div></div>
+        <div class="fact"><div class="fact__label">Trim</div><div class="fact__val">{listing.trim || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">Engine</div><div class="fact__val">{listing.engine || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">Title</div><div class="fact__val">{titleText(optionLabel(TITLE_STATUSES, listing.titleStatus), listing) || "Not set"}</div></div>
         <div class="fact"><div class="fact__label">Exterior</div><div class="fact__val">{listing.exteriorColor || "Not set"}</div></div>
