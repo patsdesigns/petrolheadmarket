@@ -5,7 +5,7 @@ import { photoUrl } from "./paths";
 
 export const PUBLIC_STATUSES = ["live", "offer_accepted", "sold"] as const;
 
-/** A listing as buyers know it: by its public (CMS) slug, only once published. */
+/** A listing as buyers know it: by its public slug, only once published. */
 export async function getPublicListing(slug: string | null) {
   if (!slug || slug.length > 120) return null;
   const db = getDb();
@@ -44,8 +44,8 @@ export async function isAppSlug(slug: string): Promise<boolean> {
 }
 
 /**
- * /offer and /message without a listing, opened from a listing page before
- * the site's script set the link: the same-origin Referer names the car.
+ * /offer and /message without a listing, opened from a car page: the
+ * same-origin Referer names the car.
  */
 export function slugFromReferer(request: Request, siteOrigin: string): string | null {
   const referer = request.headers.get("referer");
@@ -53,7 +53,7 @@ export function slugFromReferer(request: Request, siteOrigin: string): string | 
   try {
     const ref = new URL(referer);
     if (ref.origin !== siteOrigin && ref.origin !== new URL(request.url).origin) return null;
-    const m = /^\/listings\/([a-z0-9-]+)\/?$/.exec(ref.pathname);
+    const m = /^\/cars\/([a-z0-9-]+)\/?$/.exec(ref.pathname);
     return m ? validSlug(m[1]) : null;
   } catch {
     return null;

@@ -1,9 +1,10 @@
 ---
 // Shown by /offer and /message when the listing can't take offers or
-// messages: a sample listing on the Lot (not in the app), a car that has left
-// the Lot, or no listing given at all. Signed-in and signed-out visitors
+// messages: a link to a car we don't have ("sample", kept as the reason name
+// for old Webflow sample links), a car that has left the Lot, or no listing
+// given at all. Signed-in and signed-out visitors
 // alike, so nobody is asked to sign up for a dead end.
-import { siteUrl, carUrl } from "../lib/paths";
+import { siteUrl } from "../lib/paths";
 
 interface Props {
   reason: "sample" | "gone" | "missing";
@@ -14,13 +15,13 @@ interface Props {
 const { reason, slug, action } = Astro.props;
 const title =
   reason === "sample"
-    ? "This is a sample listing"
+    ? "We couldn't find that car"
     : reason === "gone"
       ? "This car is no longer on the Lot"
       : "Pick a car on the Lot first";
 const text =
   reason === "sample"
-    ? "This is a sample listing, so offers and messages are switched off. Real listings from sellers take offers and messages."
+    ? "The link may be old or mistyped. Every car for sale is on the Lot."
     : reason === "gone"
       ? "The seller or our team took this car off the Lot, so it no longer takes offers or messages."
       : `Open a car on the Lot, then use ${action === "offer" ? "Make an offer" : "Message the seller"} on its page.`;
@@ -32,7 +33,6 @@ const text =
   <p class="lede">{text}</p>
   <p class="not-open__actions">
     <a class="btn" href={siteUrl("/")}>Back to the Lot</a>
-    {slug && reason === "sample" && <a class="btn btn--secondary" href={carUrl(slug)}>Back to the car</a>}
   </p>
 </div>
 

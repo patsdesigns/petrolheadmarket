@@ -1,4 +1,293 @@
 ---
+// The Lot: every car for sale, with search, filters (left column) and sort.
+// A plain GET form, so it works without JavaScript and every search can be
+// shared or bookmarked; a small script applies filter changes right away.
 import Base from "../layouts/Base.astro";
+import { BODY_STYLES, DRIVETRAINS } from "../lib/listing-options";
+import { formatMiles, formatPrice } from "../lib/listing-rules";
+import { ERAS, PRICES, SORTS, listedAgo, lotHref, parseLotQuery, queryLot, type LotQuery } from "../lib/lot";
+import { carUrl, url } from "../lib/paths";
+import "../styles/lot.css";
+
+const q = parseLotQuery(Astro.url.searchParams);
+const lot = await queryLot(q);
+
+type Choice = { value: string; label: string };
+const groups: { key: keyof LotQuery; legend: string; type: "checkbox" | "radio"; options: readonly Choice[]; counts: Record<string, number> }[] = [
+  { key: "manual", legend: "Transmission", type: "checkbox", options: [{ value: "1", label: "Manual only" }], counts: lot.counts.manual },
+  { key: "price", legend: "Price", type: "radio", options: PRICES, counts: lot.counts.price },
+  { key: "era", legend: "Era", type: "checkbox", options: ERAS, counts: lot.counts.era },
+  { key: "drive", legend: "Drivetrain", type: "checkbox", options: DRIVETRAINS, counts: lot.counts.drive },
+  { key: "body", legend: "Body", type: "checkbox", options: BODY_STYLES, counts: lot.counts.body },
+  {
+    key: "seller",
+    legend: "Seller",
+    type: "checkbox",
+    options: [
+      { value: "private", label: "Private party" },
+      { value: "dealer", label: "Specialty dealer" },
+    ],
+    counts: lot.counts.seller,
+  },
+  { key: "records", legend: "Paperwork", type: "checkbox", options: [{ value: "1", label: "Records on file" }], counts: lot.counts.records },
+];
+const isOn = (key: keyof LotQuery, value: string) => {
+  const v = q[key];
+  return Array.isArray(v) ? v.includes(value) : v === true && value === "1";
+};
+const activeFilters = groups.flatMap((g) =>
+  g.options
+    .filter((o) => isOn(g.key, o.value))
+    .map((o) => {
+      const v = q[g.key];
+      const without = Array.isArray(v) ? { [g.key]: v.filter((x) => x !== o.value) } : { [g.key]: false };
+      return { label: o.label, href: lotHref(q, without as Partial<LotQuery>) };
+    }),
+);
+const anyFilter = activeFilters.length > 0;
+const noFilters = { manual: false, records: false, price: [], era: [], drive: [], body: [], seller: [] };
+const owners = (n: number | null) => (n ? `${n} ${n === 1 ? "owner" : "owners"}` : "");
+const carsText = (n: number) => (n === 1 ? "1 car" : `${n.toLocaleString("en-US")} cars`);
+const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast cars for sale";
 ---
-<Base title="The Lot"><h1 class="page-title">The Lot</h1></Base>
+
+<Base
+  title={pageTitle}
+  index={!q.q && !anyFilter && q.page === 1}
+  description="Enthusiast cars for sale by their owners. Every listing is reviewed by a person. Fixed prices and offers, no auctions."
+>
+  <h1 class="sr-only">Enthusiast cars for sale</h1>
+
+  <form class="lot" method="get" action={url("/")} data-lot role="search">
+    <div class="lot__search">
+      <label class="sr-only" for="lot-q">Search cars</label>
+      <svg class="lot__search-icon" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"
+        ><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2.2"></circle><path
+          d="M20 20l-4-4"
+          stroke="currentColor"
+          stroke-width="2.2"
+          stroke-linecap="round"></path></svg
+      >
+      <input
+        id="lot-q"
+        name="q"
+        type="search"
+        value={q.q}
+        maxlength="80"
+        autocomplete="off"
+        spellcheck="false"
+        enterkeyhint="search"
+        placeholder="Search make, model, year or city"
+      />
+      <button class="lot__search-go btn" type="submit">Search</button>
+    </div>
+
+    <div class="lot__body">
+      <aside class="lot__side" aria-label="Filters">
+        <details class="lot__filters" open data-filters>
+          <summary class="lot__filters-toggle">
+            Filters
+            {activeFilters.length > 0 && <span class="count">{activeFilters.length}</span>}
+          </summary>
+          <div class="lot__filters-head">
+            <h2 class="lot__filters-title">Filters</h2>
+            {anyFilter && <a class="lot__clear" href={lotHref(q, noFilters)}>Clear all</a>}
+          </div>
+          {
+            groups.map((g) => (
+              <fieldset class="lot__group">
+                <legend>{g.legend}</legend>
+                {g.options.map((o) => {
+                  const n = g.counts[o.value] ?? 0;
+                  const on = isOn(g.key, o.value);
+                  return (
+                    <label class:list={["lot__opt", { "is-zero": n === 0 && !on }]}>
+                      <input type={g.type} name={g.key} value={o.value} checked={on} />
+                      <span>{o.label}</span>
+                      <span class="lot__n">{n}</span>
+                    </label>
+                  );
+                })}
+                {g.key === "price" && q.price.length > 0 && (
+                  <a class="lot__radio-clear" href={lotHref(q, { price: [] })}>
+                    Any price
+                  </a>
+                )}
+              </fieldset>
+            ))
+          }
+          <button class="btn lot__apply" type="submit">Show {carsText(lot.total)}</button>
+        </details>
+      </aside>
+
+      <section class="lot__results" aria-labelledby="results-h">
+        <div class="lot__bar">
+          <p class="lot__count" id="results-h">{carsText(lot.total)}</p>
+          {
+            q.q && (
+              <a class="pill" href={lotHref(q, { q: "" })} aria-label={`Remove search ${q.q}`}>
+                “{q.q}” <span aria-hidden="true">✕</span>
+              </a>
+            )
+          }
+          {
+            activeFilters.map((f) => (
+              <a class="pill" href={f.href} aria-label={`Remove filter ${f.label}`}>
+                {f.label} <span aria-hidden="true">✕</span>
+              </a>
+            ))
+          }
+          <label class="lot__sort">
+            <span class="sr-only">Sort cars</span>
+            <select name="sort">
+              {SORTS.map((s) => <option value={s.value} selected={s.value === q.sort}>{s.label}</option>)}
+            </select>
+          </label>
+        </div>
+
+        {
+          lot.cards.length === 0 ? (
+            <div class="lot__empty card">
+              {lot.lotSize === 0 ? (
+                <>
+                  <h2>No cars on the Lot yet</h2>
+                  <p>Every car here is reviewed by a person before it goes live. Be one of the first to list yours.</p>
+                  <a class="btn" href={url("/sell")}>
+                    Sell your car
+                  </a>
+                </>
+              ) : (
+                <>
+                  <h2>No cars match {q.q ? `“${q.q}”` : "these filters"}</h2>
+                  <p>Try fewer filters or a shorter search.</p>
+                  <a class="btn" href={url("/")}>
+                    Clear search and filters
+                  </a>
+                </>
+              )}
+            </div>
+          ) : (
+            <ul class="lot__grid" role="list">
+              {lot.cards.map((c, i) => (
+                <li>
+                  <a class="car-card" href={carUrl(c.slug)}>
+                    <div class="car-card__photo">
+                      {c.photo && (
+                        <img
+                          src={c.photo.url}
+                          alt=""
+                          width={c.photo.width ?? undefined}
+                          height={c.photo.height ?? undefined}
+                          loading={i < 6 ? "eager" : "lazy"}
+                          decoding="async"
+                        />
+                      )}
+                      {c.status === "offer_accepted" ? (
+                        <span class="car-card__flag car-card__flag--dark">Offer accepted</span>
+                      ) : c.verifiedSeller ? (
+                        <span class="car-card__flag">Verified seller</span>
+                      ) : null}
+                      {c.photoCount > 0 && <span class="car-card__count">{c.photoCount} photos</span>}
+                    </div>
+                    <div class="car-card__body">
+                      <div class="car-card__top">
+                        <h3 class="car-card__title">{c.title}</h3>
+                        <span class="car-card__price">{formatPrice(c.price)}</span>
+                      </div>
+                      <dl class="car-card__specs">
+                        <div>
+                          <dt>Miles</dt>
+                          <dd>{formatMiles(c.mileage)}</dd>
+                        </div>
+                        <div>
+                          <dt>Trans</dt>
+                          <dd>{c.transmission}</dd>
+                        </div>
+                        <div>
+                          <dt>Location</dt>
+                          <dd>{c.location}</dd>
+                        </div>
+                      </dl>
+                      <div class="car-card__meta">
+                        <span class="car-card__badges">
+                          {c.recordsOnFile && <span class="badge badge--ok">Records</span>}
+                          {c.ownerCount ? <span class="badge">{owners(c.ownerCount)}</span> : null}
+                          {c.acceptsOffers && c.status === "live" && <span class="badge">Offers</span>}
+                        </span>
+                        <span class="car-card__ago">{listedAgo(c.publishedAt)}</span>
+                      </div>
+                    </div>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )
+        }
+
+        {
+          lot.pages > 1 && (
+            <nav class="lot__pages" aria-label="Pages">
+              {lot.page > 1 ? (
+                <a class="btn btn--secondary" href={lotHref(q, { page: lot.page - 1 })} rel="prev">
+                  Previous
+                </a>
+              ) : (
+                <span />
+              )}
+              <span class="lot__page-n">
+                Page {lot.page} of {lot.pages}
+              </span>
+              {lot.page < lot.pages ? (
+                <a class="btn btn--secondary" href={lotHref(q, { page: lot.page + 1 })} rel="next">
+                  Next
+                </a>
+              ) : (
+                <span />
+              )}
+            </nav>
+          )
+        }
+      </section>
+    </div>
+  </form>
+</Base>
+
+<script>
+  // Filters and sort apply as soon as they change. Without this script the
+  // Show cars and Search buttons submit the same form.
+  const form = document.querySelector<HTMLFormElement>("[data-lot]");
+  const filters = document.querySelector<HTMLDetailsElement>("[data-filters]");
+  if (form) {
+    form.classList.add("is-live");
+    // Only send the fields that are set, so the address stays short.
+    form.addEventListener("formdata", (e) => {
+      const keep = [...e.formData.entries()].filter(([k, v]) => v !== "" && !(k === "sort" && v === "new"));
+      for (const k of new Set([...e.formData.keys()])) e.formData.delete(k);
+      for (const [k, v] of keep) e.formData.append(k, v);
+    });
+    form.addEventListener("change", (e) => {
+      if ((e.target as HTMLInputElement).name !== "q") form.requestSubmit();
+    });
+    // A second click on the chosen price clears it.
+    form.querySelectorAll<HTMLInputElement>("input[type=radio]").forEach((r) => {
+      let was = r.checked;
+      r.addEventListener("click", () => {
+        if (was) {
+          r.checked = false;
+          form.requestSubmit();
+        }
+        was = r.checked;
+      });
+    });
+    // "/" jumps to the search box.
+    document.addEventListener("keydown", (e) => {
+      const t = e.target as HTMLElement;
+      if (e.key === "/" && !e.ctrlKey && !e.metaKey && !/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !t.isContentEditable) {
+        e.preventDefault();
+        document.getElementById("lot-q")?.focus();
+      }
+    });
+  }
+  // On small screens the filters start folded under a Filters button.
+  if (filters && window.matchMedia("(max-width: 900px)").matches) filters.open = false;
+</script>

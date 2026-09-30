@@ -1,0 +1,313 @@
+---
+// A car's public page: every photo, the facts, the seller's story and the
+// buy box (Make an offer, Message the seller). Live, offer accepted and sold
+// cars have a page; sold ones show as sold with no buttons.
+import { and, eq, inArray } from "drizzle-orm";
+import Base from "../../layouts/Base.astro";
+import { getDb } from "../../db/client";
+import { listings, profiles } from "../../db/schema";
+import { BODY_STYLES, DRIVETRAINS, TITLE_STATUSES, TRANSMISSIONS, optionLabel } from "../../lib/listing-options";
+import { formatMiles, formatPrice, listingTitle, titleText } from "../../lib/listing-rules";
+import { getPhotos, photoView } from "../../lib/listings";
+import { listedAgo } from "../../lib/lot";
+import { PUBLIC_STATUSES, validSlug } from "../../lib/public-listing";
+import { toList, toParagraphs } from "../../lib/richtext";
+import { url, GARAGE } from "../../lib/paths";
+import "../../styles/car.css";
+
+const slug = validSlug(Astro.params.slug ?? null);
+const listing = slug
+  ? await getDb()
+      .select()
+      .from(listings)
+      .where(and(eq(listings.slug, slug), inArray(listings.status, [...PUBLIC_STATUSES])))
+      .get()
+  : undefined;
+if (!listing) {
+  Astro.response.status = 404;
+  return Astro.rewrite(url("/404"));
+}
+
+const photos = (await getPhotos(listing.id)).map(photoView);
+const seller = await getDb().select().from(profiles).where(eq(profiles.userId, listing.userId)).get();
+const sellerName = seller?.displayName ?? "Private seller";
+const title = listingTitle(listing);
+const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
+const isOwn = Astro.locals.user?.id === listing.userId;
+const isLive = listing.status === "live";
+const isSold = listing.status === "sold";
+const canOffer = isLive && listing.acceptsOffers && !isOwn;
+const canMessage = !isSold && !isOwn;
+const showPhone = listing.contactMethod === "messages_phone" && Boolean(listing.contactPhone) && !isSold;
+const q = `?listing=${encodeURIComponent(listing.slug!)}`;
+
+const facts = [
+  ["Year", listing.year],
+  ["Mileage", formatMiles(listing.mileage)],
+  ["Transmission", optionLabel(TRANSMISSIONS, listing.transmission)],
+  ["Drivetrain", optionLabel(DRIVETRAINS, listing.drivetrain)],
+  ["Engine", listing.engine],
+  ["Body", optionLabel(BODY_STYLES, listing.bodyStyle)],
+  ["Exterior", listing.exteriorColor],
+  ["Interior", listing.interiorColor],
+  ["Title", listing.titleStatus ? titleText(optionLabel(TITLE_STATUSES, listing.titleStatus), listing) : null],
+  ["Owners", listing.ownerCount],
+  ["Location", location],
+  ["VIN", listing.vin],
+].filter(([, v]) => v !== null && v !== undefined && v !== "") as [string, string | number][];
+
+const sections = [
+  { id: "story", title: "The story", html: toParagraphs(listing.description) },
+  { id: "highlights", title: "Highlights", html: toList(listing.highlights) },
+  { id: "issues", title: "Known issues", html: toList(listing.knownIssues), issues: true },
+  { id: "mods", title: "Modifications", html: toList(listing.modifications) },
+  { id: "service", title: "Service history", html: toParagraphs(listing.serviceHistory) },
+].filter((s) => s.html);
+
+const statusNote = isSold
+  ? "This car has sold. It stays here so buyers can see what it went for."
+  : listing.status === "offer_accepted"
+    ? "The seller accepted an offer. If the deal falls through the car comes back on sale, so you can still message the seller."
+    : null;
+
+// Search engines: a Vehicle with its asking price.
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Car",
+  name: title,
+  vehicleModelDate: listing.year ? String(listing.year) : undefined,
+  brand: listing.make ? { "@type": "Brand", name: listing.make } : undefined,
+  model: listing.model ?? undefined,
+  mileageFromOdometer: listing.mileage ? { "@type": "QuantitativeValue", value: listing.mileage, unitCode: "SMI" } : undefined,
+  image: photos.slice(0, 5).map((p) => new URL(p.url, Astro.url).toString()),
+  offers: listing.price
+    ? {
+        "@type": "Offer",
+        price: listing.price,
+        priceCurrency: "USD",
+        availability: isSold ? "https://schema.org/SoldOut" : "https://schema.org/InStock",
+      }
+    : undefined,
+};
+---
+
+<Base
+  title={`${title} for sale`}
+  index={!isSold}
+  description={listing.headline ? `${listing.headline}. ${title} for sale on Petrol Head Market.` : `${title} for sale on Petrol Head Market.`}
+  image={photos[0]?.url ?? null}
+>
+  <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, "\\u003c")} />
+  <a class="back" href={url("/")}>← Back to the Lot</a>
+  <p class="eyebrow">
+    {location && <span>{location}</span>}
+    <span>{listedAgo(listing.publishedAt)}</span>
+    {isSold && <span>Sold</span>}
+  </p>
+  <h1 class="car-title">{title}</h1>
+  {listing.headline && <p class="car-headline">{listing.headline}</p>}
+
+  <div class="with-side car">
+    <div class="car__main">
+      {
+        photos.length > 0 ? (
+          <div class="gallery" data-gallery>
+            <div class="gallery__stage">
+              <button class="gallery__open" type="button" aria-label="View photos full screen" data-open>
+                <img
+                  class="gallery__img"
+                  src={photos[0].url}
+                  alt={`${title}, photo 1 of ${photos.length}`}
+                  width={photos[0].width ?? undefined}
+                  height={photos[0].height ?? undefined}
+                  fetchpriority="high"
+                  data-main
+                />
+              </button>
+              {isSold ? <span class="gallery__tag gallery__tag--dark">Sold</span> : listing.status === "offer_accepted" ? <span class="gallery__tag gallery__tag--dark">Offer accepted</span> : listing.verifiedSeller ? <span class="gallery__tag">Verified seller</span> : null}
+              {photos.length > 1 && (
+                <>
+                  <button class="gallery__arrow gallery__arrow--prev" type="button" aria-label="Previous photo" data-prev>
+                    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg>
+                  </button>
+                  <button class="gallery__arrow gallery__arrow--next" type="button" aria-label="Next photo" data-next>
+                    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg>
+                  </button>
+                </>
+              )}
+              <span class="gallery__count" aria-live="polite" data-count>1 / {photos.length}</span>
+            </div>
+            {photos.length > 1 && (
+              <div class="gallery__strip" role="group" aria-label="Photos">
+                {photos.map((p, i) => (
+                  <button class="gallery__thumb" type="button" aria-label={`Photo ${i + 1} of ${photos.length}`} aria-current={i === 0 ? "true" : "false"} data-thumb={i}>
+                    <img src={p.url} alt="" loading="lazy" decoding="async" width={p.width ?? undefined} height={p.height ?? undefined} />
+                  </button>
+                ))}
+              </div>
+            )}
+            <dialog class="viewer" aria-label="Photos" data-viewer>
+              <img class="viewer__img" alt="" data-viewer-img />
+              <span class="viewer__count" data-viewer-count></span>
+              <button class="viewer__btn viewer__close" type="button" aria-label="Close photos" data-close>
+                <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg>
+              </button>
+              {photos.length > 1 && (
+                <>
+                  <button class="viewer__btn viewer__prev" type="button" aria-label="Previous photo" data-prev>
+                    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg>
+                  </button>
+                  <button class="viewer__btn viewer__next" type="button" aria-label="Next photo" data-next>
+                    <svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" /></svg>
+                  </button>
+                </>
+              )}
+            </dialog>
+            <script type="application/json" data-photos set:html={JSON.stringify(photos.map((p) => p.url)).replace(/</g, "\\u003c")} />
+          </div>
+        ) : (
+          <div class="gallery__none stripes">Photos coming soon</div>
+        )
+      }
+
+      {facts.length > 0 && (
+        <dl class="facts car__facts">
+          {facts.map(([label, value]) => (
+            <div class="fact">
+              <dt class="fact__label">{label}</dt>
+              <dd class="fact__val">{value}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {
+        sections.map((s) => (
+          <section class:list={["car__section", { "car__section--issues": s.issues }]} aria-labelledby={`${s.id}-h`}>
+            <h2 class="car__h2" id={`${s.id}-h`}>{s.title}</h2>
+            <div class="car__rich" set:html={s.html} />
+          </section>
+        ))
+      }
+      {
+        listing.videoUrl && (
+          <section class="car__section" aria-labelledby="video-h">
+            <h2 class="car__h2" id="video-h">Video</h2>
+            <a class="btn btn--secondary" href={listing.videoUrl} rel="noopener nofollow" target="_blank">Watch the video</a>
+          </section>
+        )
+      }
+    </div>
+
+    <aside class="car__side">
+      <div class="card buy">
+        <p class="buy__label">{isSold ? "Sold" : "Asking price"}</p>
+        <p class="buy__price">{formatPrice(listing.price)}</p>
+        {isLive && listing.acceptsOffers && <p class="badge badge--ok buy__offers">Open to offers</p>}
+        {statusNote && <p class="buy__note">{statusNote}</p>}
+        {
+          isOwn ? (
+            <>
+              <p class="buy__note">This is your listing.</p>
+              <a class="btn buy__btn" href={url(`/listings/${listing.id}`)}>Manage this listing</a>
+              <a class="btn btn--secondary buy__btn" href={url(GARAGE)}>My garage</a>
+            </>
+          ) : (
+            <>
+              {canOffer && <a class="btn buy__btn" href={`${url("/offer")}${q}`}>Make an offer</a>}
+              {canMessage && <a class:list={["btn buy__btn", { "btn--secondary": canOffer }]} href={`${url("/message")}${q}`}>Message the seller</a>}
+            </>
+          )
+        }
+        {
+          showPhone && (
+            <p class="buy__phone">
+              <span>Phone</span>
+              <a href={`tel:${listing.contactPhone!.replace(/[^\d+]/g, "")}`}>{listing.contactPhone}</a>
+            </p>
+          )
+        }
+        <p class="buy__seller">
+          Sold by <strong>{sellerName}</strong>, {listing.sellerType === "dealer" ? "a specialty dealer" : "a private seller"}.
+          {listing.verifiedSeller && " Verified seller."}
+          {listing.recordsOnFile && " Records on file."}
+        </p>
+      </div>
+      <div class="trust">
+        <p class="trust__title">Buy safely</p>
+        <p>Every listing is reviewed by a person before it goes live. Keep the conversation here, see the car and the title in person, and never wire money or send a deposit before you have.</p>
+      </div>
+    </aside>
+  </div>
+
+  {
+    (canOffer || canMessage) && (
+      <div class="car-bar">
+        <span class="car-bar__price">{formatPrice(listing.price)}</span>
+        {canOffer ? <a class="btn" href={`${url("/offer")}${q}`}>Make an offer</a> : <a class="btn" href={`${url("/message")}${q}`}>Message the seller</a>}
+      </div>
+    )
+  }
+</Base>
+
+<script>
+  // Photo gallery: thumbnails, arrows, keyboard, swipe and a full screen viewer.
+  const root = document.querySelector<HTMLElement>("[data-gallery]");
+  if (root) {
+    const urls = JSON.parse(root.querySelector("[data-photos]")?.textContent || "[]") as string[];
+    const main = root.querySelector<HTMLImageElement>("[data-main]")!;
+    const count = root.querySelector<HTMLElement>("[data-count]")!;
+    const viewer = root.querySelector<HTMLDialogElement>("[data-viewer]")!;
+    const vImg = root.querySelector<HTMLImageElement>("[data-viewer-img]")!;
+    const vCount = root.querySelector<HTMLElement>("[data-viewer-count]")!;
+    const thumbs = [...root.querySelectorAll<HTMLButtonElement>("[data-thumb]")];
+    const title = main.alt.replace(/, photo .*$/, "");
+    let i = 0;
+    const show = (n: number) => {
+      i = (n + urls.length) % urls.length;
+      main.src = urls[i];
+      main.removeAttribute("srcset");
+      main.alt = `${title}, photo ${i + 1} of ${urls.length}`;
+      count.textContent = `${i + 1} / ${urls.length}`;
+      vImg.src = urls[i];
+      vImg.alt = main.alt;
+      vCount.textContent = `${i + 1} / ${urls.length}`;
+      thumbs.forEach((t, k) => t.setAttribute("aria-current", String(k === i)));
+      thumbs[i]?.scrollIntoView({ block: "nearest", inline: "nearest" });
+      if (urls.length > 1) new Image().src = urls[(i + 1) % urls.length];
+    };
+    root.querySelectorAll("[data-prev]").forEach((b) => b.addEventListener("click", () => show(i - 1)));
+    root.querySelectorAll("[data-next]").forEach((b) => b.addEventListener("click", () => show(i + 1)));
+    thumbs.forEach((t, k) => t.addEventListener("click", () => show(k)));
+    root.querySelector("[data-open]")?.addEventListener("click", () => {
+      show(i);
+      viewer.showModal();
+    });
+    root.querySelector("[data-close]")?.addEventListener("click", () => viewer.close());
+    viewer.addEventListener("click", (e) => {
+      if (e.target === viewer) viewer.close();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.altKey || e.ctrlKey || e.metaKey) return;
+      const inGallery = viewer.open || root.contains(document.activeElement);
+      if (!inGallery) return;
+      if (e.key === "ArrowLeft") (e.preventDefault(), show(i - 1));
+      if (e.key === "ArrowRight") (e.preventDefault(), show(i + 1));
+    });
+    // One finger swipe on the photo or the viewer.
+    const swipe = (el: HTMLElement) => {
+      let x: number | null = null;
+      let y = 0;
+      el.addEventListener("touchstart", (e) => { x = e.touches.length === 1 ? e.touches[0].clientX : null; y = e.touches[0].clientY; }, { passive: true });
+      el.addEventListener("touchend", (e) => {
+        if (x === null) return;
+        const dx = e.changedTouches[0].clientX - x;
+        const dy = e.changedTouches[0].clientY - y;
+        x = null;
+        if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy)) show(i + (dx < 0 ? 1 : -1));
+      }, { passive: true });
+    };
+    swipe(root.querySelector(".gallery__stage")!);
+    swipe(viewer);
+  }
+</script>
