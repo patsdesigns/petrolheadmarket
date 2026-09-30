@@ -1,220 +1,117 @@
-/* The Lot: a search box with quick filters on top, the newest arrival as a
-   showcase, then the grid of cars. */
+/* The Lot: a row of filter chips (the search box is in the site header),
+   the newest arrival as a showcase, then the grid of cars. */
 
-/* Finder: search plus the quick filters, one glass panel. Its blur sits on
-   a layer behind it, so the More filters panel inside can blur the page too
-   (a blurred box stops the boxes inside it from blurring what is behind). */
-.finder {
+/* Filter chips. The toolbar anchors the More filters panel, so the panel
+   always lines up with the row, wherever the button wraps to. */
+.toolbar {
   position: relative;
   z-index: 5;
-  margin: 10px 0 32px;
-  border-radius: 22px;
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--glass-shadow-lift);
-}
-.finder::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  border-radius: inherit;
-  background: var(--glass-strong);
-  -webkit-backdrop-filter: var(--glass-blur-strong);
-  backdrop-filter: var(--glass-blur-strong);
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .finder::before,
-  .more {
-    background: rgba(255, 255, 255, 0.96);
-  }
-}
-.finder__search {
-  position: relative;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
-  height: 70px;
-  padding: 0 11px 0 58px;
-  border-radius: 22px 22px 0 0;
+  margin: 26px 0 30px;
 }
-.finder__search:focus-within {
-  box-shadow: inset 0 -2px 0 var(--red);
-}
-.finder__icon {
-  position: absolute;
-  left: 22px;
-  color: var(--muted);
-  pointer-events: none;
-}
-.finder__search input {
-  flex: 1;
-  min-width: 0;
-  height: 100%;
-  border: 0;
-  background: none;
-  color: var(--ink);
-  font: 500 19px var(--font-ui);
-  outline: 0;
-  -webkit-appearance: none;
-  appearance: none;
-}
-.finder__search input::placeholder {
-  color: #7a7e86;
-}
-.finder__search input::-webkit-search-cancel-button {
-  cursor: pointer;
-}
-.finder__go {
+.chip {
   flex: none;
-  min-width: 112px;
-}
-
-/* Quick filters: segments split by hairlines. */
-.quick {
-  display: flex;
-  align-items: stretch;
-  gap: 4px;
-  padding: 8px;
-  border-top: 1px solid var(--hair);
-}
-.qf {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  flex: 1 1 0;
-  min-width: 0;
-  padding: 8px 14px 7px;
-  border-radius: 14px;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
-}
-.qf:hover,
-.qf:focus-within {
-  background: rgba(255, 255, 255, 0.7);
-}
-.qf + .qf::before {
-  content: "";
-  position: absolute;
-  left: -2.5px;
-  top: 14px;
-  bottom: 14px;
-  width: 1px;
-  background: var(--hair);
-}
-.qf:hover::before,
-.qf:hover + .qf::before,
-.qf:focus-within::before,
-.qf:focus-within + .qf::before {
-  opacity: 0;
-}
-.qf--year {
-  flex-grow: 1.35;
-  cursor: default;
-}
-.qf__label {
-  color: var(--muted);
-  font: 600 11px var(--font-label);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-.qf select {
-  width: 100%;
-  min-width: 0;
-  height: 30px;
-  padding: 0 22px 0 0;
-  border: 0;
-  background: transparent url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2315171B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 4px center;
+  height: 42px;
+  max-width: 230px;
+  padding: 0 38px 0 18px;
+  border: 1px solid rgba(21, 23, 27, 0.12);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%2315171B' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat right 16px center;
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  backdrop-filter: blur(12px) saturate(160%);
+  box-shadow: 0 1px 2px rgba(21, 23, 27, 0.04);
   color: var(--ink);
-  font: 600 16px var(--font-ui);
+  font: 600 15px var(--font-ui);
   text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
-  outline: 0;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   -webkit-appearance: none;
   appearance: none;
 }
-.qf select:focus-visible {
-  box-shadow: none;
-  text-decoration: underline;
-  text-decoration-color: var(--red);
-  text-underline-offset: 4px;
+/* Chips grow with what they show where the browser can. */
+@supports (field-sizing: content) {
+  select.chip {
+    field-sizing: content;
+  }
 }
-.qf select:disabled {
+.chip:hover {
+  background-color: var(--white);
+  border-color: rgba(21, 23, 27, 0.24);
+}
+.chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(213, 0, 28, 0.16);
+  border-color: var(--red);
+}
+/* A chip with a value set: an ink outline and a light tint. */
+.chip.is-set {
+  border: 1.5px solid var(--ink);
+  background-color: var(--white);
+  font-weight: 700;
+}
+.chip:disabled {
+  color: #9a9ea6;
+  background-color: rgba(255, 255, 255, 0.45);
   cursor: not-allowed;
 }
-.qf.is-off {
-  cursor: not-allowed;
+.chip:disabled:hover {
+  border-color: rgba(21, 23, 27, 0.12);
 }
-.qf.is-off select {
-  color: #8a8e96;
-}
-.qf__pair {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.qf__pair select {
-  flex: 1;
-}
-.qf__to {
-  color: var(--muted);
-  font-size: 14px;
+.toolbar__clear {
+  margin-left: 4px;
 }
 
-/* More filters: a glass panel under its button. */
-.qf--more {
-  flex: none;
-  padding: 0;
-}
-.qf--more:hover,
-.qf--more:focus-within {
-  background: none;
-}
-.qf--more > summary {
-  display: flex;
+/* More filters: a glass panel under the row. */
+.chip-more > summary {
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  height: 100%;
-  min-height: 48px;
   padding: 0 18px;
-  border-radius: 14px;
-  background: var(--ink);
-  color: #fff;
-  font-weight: 600;
-  font-size: 15px;
-  white-space: nowrap;
+  background-image: none;
   list-style: none;
-  cursor: pointer;
-  transition: background-color 0.15s ease;
+  line-height: 40px;
 }
-.qf--more > summary::-webkit-details-marker {
+.chip-more > summary::-webkit-details-marker {
   display: none;
 }
-.qf--more > summary:hover,
-.qf--more[open] > summary {
-  background: #2c2f36;
-}
-.qf--more .count {
-  margin-left: 2px;
+.chip-more[open] > summary {
+  background-color: var(--white);
+  border-color: rgba(21, 23, 27, 0.3);
 }
 .more {
   position: absolute;
-  right: 0;
-  top: calc(100% + 14px);
+  left: 0;
+  top: calc(100% + 12px);
   z-index: 20;
-  width: min(720px, calc(100vw - 40px));
-  padding: 22px 22px 18px;
+  width: min(760px, 100%);
+  padding: 22px 24px 18px;
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.86);
+  background: rgba(255, 255, 255, 0.84);
   -webkit-backdrop-filter: var(--glass-blur-strong);
   backdrop-filter: var(--glass-blur-strong);
   border: 1px solid var(--glass-border);
   box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 24px 60px rgba(21, 23, 27, 0.18);
   cursor: default;
 }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .more {
+    background: rgba(255, 255, 255, 0.97);
+  }
+}
+.more__head {
+  display: none;
+}
+.more__title {
+  margin: 0;
+  font-size: 22px;
+}
 .more__groups {
   column-count: 3;
-  column-gap: 28px;
+  column-gap: 32px;
 }
 .more__group {
   min-width: 0;
@@ -229,7 +126,7 @@
   margin: 0 0 4px;
   padding: 0;
   color: var(--muted);
-  font: 600 11px var(--font-label);
+  font: 600 12px var(--font-label);
   letter-spacing: 0.12em;
   text-transform: uppercase;
 }
@@ -285,13 +182,12 @@
 .lot__clear:hover {
   text-decoration: underline;
 }
-/* With the script, quick filters apply on change. */
+/* With the script, the chips apply on change. */
 .lot.is-live .quick__apply {
   display: none;
 }
 .quick__apply {
-  flex: none;
-  align-self: center;
+  min-height: 42px;
 }
 
 /* Newest arrival: a big photo with a glass panel over it. */
@@ -398,15 +294,6 @@
   font: 600 13px var(--font-label);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-}
-.lot__pills {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-}
-.lot__pills:empty {
-  display: none;
 }
 .lot__sort {
   display: flex;
@@ -632,47 +519,59 @@
     aspect-ratio: 16 / 9;
   }
 }
-@media (max-width: 900px) {
-  /* Quick filters become a two-column grid of tiles. */
-  .quick {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
+@media (max-width: 720px) {
+  /* Phones: one row of chips that scrolls sideways, and More filters opens
+     as a sheet from the bottom of the screen. */
+  .toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 16px -16px 22px;
+    padding: 2px 16px 6px;
+    scrollbar-width: none;
   }
-  .qf {
-    background: rgba(255, 255, 255, 0.55);
-    border: 1px solid var(--hair);
-  }
-  .qf + .qf::before {
+  .toolbar::-webkit-scrollbar {
     display: none;
   }
-  .qf--year,
-  .qf--more,
-  .quick__apply {
-    grid-column: 1 / -1;
+  .chip {
+    height: 40px;
   }
-  .qf--more {
-    border: 0;
-    background: none;
-  }
-  .qf--more > summary {
-    justify-content: center;
+  .chip-more[open]::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(21, 23, 27, 0.35);
   }
   .more {
-    position: static;
+    position: fixed;
+    left: 0;
+    right: 0;
+    top: auto;
+    bottom: 0;
+    z-index: 61;
     width: auto;
-    margin-top: 8px;
-    padding: 16px;
-    box-shadow: var(--glass-shadow);
+    max-height: 82vh;
+    overflow-y: auto;
+    padding: 18px 18px calc(16px + env(safe-area-inset-bottom));
+    border-radius: 22px 22px 0 0;
+    background: rgba(255, 255, 255, 0.96);
   }
-  .more__opt {
-    min-height: 44px;
+  .more__head {
+    display: block;
+    margin-bottom: 10px;
   }
   .more__groups {
     column-count: 2;
   }
-  .quick__apply {
-    width: 100%;
+  .more__opt {
+    min-height: 44px;
+  }
+  .more__foot {
+    position: sticky;
+    bottom: 0;
+  }
+  .more__foot .btn {
+    flex: 1;
   }
 }
 @media (max-width: 760px) {
@@ -709,23 +608,6 @@
   }
 }
 @media (max-width: 640px) {
-  .finder {
-    border-radius: 18px;
-  }
-  .finder__search {
-    height: 60px;
-    padding-left: 50px;
-    border-radius: 18px 18px 0 0;
-  }
-  .finder__icon {
-    left: 18px;
-  }
-  .finder__search input {
-    font-size: 17px;
-  }
-  .finder__go {
-    display: none;
-  }
   .lot__grid {
     grid-template-columns: minmax(0, 1fr);
     gap: 30px;
@@ -745,8 +627,7 @@
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  .qf,
-  .qf--more > summary,
+  .chip,
   .feature__photo img,
   .car-card__photo,
   .car-card__photo img {

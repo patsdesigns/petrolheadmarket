@@ -9,11 +9,31 @@ import { url } from "../../lib/paths";
 import { formatPrice, listingTitle } from "../../lib/listing-rules";
 import Notice from "../../components/Notice.astro";
 import { emailConfigured } from "../../lib/config";
+import { addDemoCars, demoCount, removeDemoCars } from "../../lib/demo-cars";
+import { safeError } from "../../lib/log";
 
 // Middleware already limits /admin to admins; check again here.
 if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
 
-if (Astro.request.method === "POST") return Astro.redirect(url("/admin"), 303);
+if (Astro.request.method === "POST") {
+  const form = await Astro.request.formData().catch(() => null);
+  const intent = form?.get("intent");
+  const actor = Astro.locals.profile.userId;
+  try {
+    if (intent === "demo_add") {
+      const n = await addDemoCars(actor, Astro.url.origin);
+      return Astro.redirect(url(`/admin?done=${n ? "demo_added" : "demo_there"}`), 303);
+    }
+    if (intent === "demo_remove") {
+      await removeDemoCars(actor);
+      return Astro.redirect(url("/admin?done=demo_removed"), 303);
+    }
+  } catch (err) {
+    console.error("[demo] failed", safeError(err));
+    return Astro.redirect(url("/admin?done=demo_failed"), 303);
+  }
+  return Astro.redirect(url("/admin"), 303);
+}
 
 const db = getDb();
 const rows = await db
@@ -57,6 +77,13 @@ const recent = await db
 
 const done = Astro.url.searchParams.get("done");
 const doneText: Record<string, string> = { changes: "Changes requested.", reject: "Listing rejected." };
+const demoText: Record<string, [string, "ok" | "error"]> = {
+  demo_added: ["Demo cars added. They are on the Lot now.", "ok"],
+  demo_there: ["The demo cars are already on the Lot.", "ok"],
+  demo_removed: ["Demo cars removed, with their photos, offers and messages.", "ok"],
+  demo_failed: ["That did not work. Nothing was changed on the Lot. Try again in a minute.", "error"],
+};
+const demos = await demoCount();
 const emailNote = emailConfigured()
   ? "The seller was emailed your note."
   : "Email is not set up, so the seller was not emailed. They see your note in My garage.";
@@ -73,6 +100,7 @@ const waited = (d: Date | null) => {
   <h1 class="page-title">Review queue</h1>
   <p class="lede">{queue.length === 0 ? "Nothing waiting. Nice." : `${queue.length} waiting, oldest first.`}</p>
   {done && doneText[done] && <Notice tone="ok"><p>{doneText[done]} {emailNote}</p></Notice>}
+  {done && demoText[done] && <Notice tone={demoText[done][1]}><p>{demoText[done][0]}</p></Notice>}
 
   {
     stuck.length > 0 && (
@@ -136,9 +164,52 @@ const waited = (d: Date | null) => {
       </section>
     )
   }
+
+  <section class="card demo" aria-labelledby="demo-h">
+    <h2 id="demo-h">Demo cars</h2>
+    {
+      demos > 0 ? (
+        <>
+          <p class="muted">
+            {demos} made-up cars from a demo seller are on the site so you can see how pages look. Remove them before you open the site to the
+            public.
+          </p>
+          <details class="demo__confirm">
+            <summary class="btn btn--secondary">Remove demo cars</summary>
+            <form method="post">
+              <input type="hidden" name="intent" value="demo_remove" />
+              <p>This deletes all {demos} demo cars with their photos, and any offers and messages on them.</p>
+              <button class="btn" type="submit">Yes, remove demo cars</button>
+            </form>
+          </details>
+        </>
+      ) : (
+        <>
+          <p class="muted">Add 25 made-up cars with drawn photos to see how the Lot and car pages look. Each one says it is a demo, and you can remove them all in one click.</p>
+          <form method="post">
+            <input type="hidden" name="intent" value="demo_add" />
+            <button class="btn btn--secondary" type="submit">Add 25 demo cars</button>
+          </form>
+        </>
+      )
+    }
+  </section>
 </Base>
 
 <style>
+  .demo {
+    margin-top: 40px;
+  }
+  .demo__confirm summary {
+    list-style: none;
+    cursor: pointer;
+  }
+  .demo__confirm summary::-webkit-details-marker {
+    display: none;
+  }
+  .demo__confirm form {
+    margin-top: 14px;
+  }
   .warn {
     box-shadow: inset 4px 0 0 var(--red), var(--glass-shadow);
     margin-bottom: 20px;
