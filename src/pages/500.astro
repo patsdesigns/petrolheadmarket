@@ -36,12 +36,19 @@ interface Props {
     </main>
     <style>
       .bar {
-        background: var(--ink);
-        padding: 20px 0;
+        min-height: var(--header-h);
+        display: flex;
+        align-items: center;
+        background: var(--glass-strong);
+        -webkit-backdrop-filter: var(--glass-blur-strong);
+        backdrop-filter: var(--glass-blur-strong);
+        border-bottom: 1px solid rgba(21, 23, 27, 0.06);
       }
       .bar a {
-        color: #fff;
+        color: var(--ink);
         font-weight: 900;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
         text-decoration: none;
       }
     </style>

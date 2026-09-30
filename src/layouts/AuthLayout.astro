@@ -42,28 +42,34 @@ const { title, lede } = Astro.props;
     max-width: 1100px;
     margin: 0 auto;
   }
+  /* Dark glass panel over the backdrop, with a soft red glow. */
   .auth__brand {
     position: sticky;
-    top: 24px;
+    top: calc(var(--header-h) + 20px);
     padding: 40px;
-    border-radius: var(--radius-card);
-    background: var(--ink);
+    border-radius: 20px;
+    background: radial-gradient(520px 320px at 0% 0%, rgba(213, 0, 28, 0.28), transparent 70%),
+      radial-gradient(420px 300px at 100% 100%, rgba(96, 118, 150, 0.3), transparent 70%), var(--glass-dark);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 20px 50px rgba(21, 23, 27, 0.18);
     color: var(--white);
     min-height: 480px;
     display: flex;
     flex-direction: column;
   }
   .auth__kicker {
-    color: rgba(255, 255, 255, 0.6);
+    color: rgba(255, 255, 255, 0.7);
     margin: 0 0 20px;
   }
   .auth__big {
     font-size: 40px;
-    font-weight: 900;
-    line-height: 1.05;
-    text-transform: uppercase;
+    font-weight: 800;
+    line-height: 1.08;
+    letter-spacing: -0.015em;
     margin: 0 0 auto;
-    max-width: 14ch;
+    max-width: 15ch;
   }
   .auth__points {
     list-style: none;
@@ -77,14 +83,18 @@ const { title, lede } = Astro.props;
     grid-template-columns: 36px 1fr;
     gap: 10px;
     padding-top: 14px;
-    border-top: 1px dashed rgba(255, 255, 255, 0.25);
+    border-top: 1px solid rgba(255, 255, 255, 0.14);
+    color: rgba(255, 255, 255, 0.86);
   }
   .auth__points span {
     font-family: var(--font-mono);
     font-size: 12px;
-    color: var(--red);
+    color: #ff6b7d;
     letter-spacing: 0.12em;
     padding-top: 3px;
+  }
+  .auth__card {
+    padding: 28px;
   }
   .auth__card :global(.btn) {
     width: 100%;

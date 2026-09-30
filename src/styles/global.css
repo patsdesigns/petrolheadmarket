@@ -1,33 +1,57 @@
-/* Design tokens: match the public Webflow site exactly (see CLAUDE.md, Design). */
+/* Design tokens: the glass design shared with the public Webflow site
+   (see CLAUDE.md, Design). */
 :root {
   --ink: #15171b;
   --red: #d5001c;
   --red-dark: #b00017;
-  --paper: #f6f6f3;
+  --red-tint: rgba(213, 0, 28, 0.08);
+  /* Page background under the backdrop gradient. */
+  --paper: #eef0f3;
   --white: #ffffff;
-  --line: #ddddd5;
+  /* Borders on inputs, buttons and outlines. */
+  --line: rgba(21, 23, 27, 0.12);
+  /* Hairlines inside glass: spec rows, dividers, table rows. */
+  --hair: rgba(21, 23, 27, 0.08);
+  /* A faint fill for hover rows and wells inside glass. */
+  --tint: rgba(21, 23, 27, 0.04);
   --muted: #5a5e66;
   --ok: #1a6b3c;
-  --ok-bg: #eaf4ee;
-  --ok-line: #cbe3d4;
+  --ok-bg: rgba(26, 107, 60, 0.1);
+  --ok-line: rgba(26, 107, 60, 0.22);
 
   --font-ui: "Archivo", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 
-  --radius-card: 12px;
-  --radius-tile: 10px;
-  --radius-btn: 8px;
+  --radius-card: 16px;
+  --radius-tile: 16px;
+  --radius-btn: 12px;
   --tap: 44px;
-  /* Height of the sticky site header (dark bar plus promise strip). Sticky
-     side columns sit below it: top: calc(var(--header-h) + 20px). */
-  --header-h: 100px;
+  /* Height of the sticky site header. Sticky side columns sit below it:
+     top: calc(var(--header-h) + 20px). */
+  --header-h: 64px;
   --gutter: 20px;
   --max: 1180px;
-  --line-dark: #3a3e45;
-  --badge-bg: #ededE8;
+  --line-dark: rgba(21, 23, 27, 0.12);
+  --badge-bg: rgba(21, 23, 27, 0.06);
   --body-ink: #2a2d33;
-  --stripes: repeating-linear-gradient(-45deg, #22252b 0 14px, #1c1f24 14px 28px);
+  --stripes: linear-gradient(135deg, #dde1e7, #c9ced6);
   --focus: 0 0 0 3px var(--white), 0 0 0 5px var(--red);
+
+  /* Glass surfaces */
+  --glass: rgba(255, 255, 255, 0.62);
+  --glass-strong: rgba(255, 255, 255, 0.72);
+  --glass-dark: rgba(21, 23, 27, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-blur: blur(20px) saturate(170%);
+  --glass-blur-strong: blur(24px) saturate(170%);
+  --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 1px 2px rgba(21, 23, 27, 0.04),
+    0 10px 30px rgba(21, 23, 27, 0.07);
+  --glass-shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 2px 4px rgba(21, 23, 27, 0.05),
+    0 16px 40px rgba(21, 23, 27, 0.11);
+  --backdrop: radial-gradient(1100px 620px at 8% -8%, rgba(213, 0, 28, 0.07), transparent 60%),
+    radial-gradient(900px 560px at 100% 0%, rgba(96, 118, 150, 0.16), transparent 62%),
+    radial-gradient(900px 700px at 50% 110%, rgba(255, 255, 255, 0.9), transparent 60%),
+    linear-gradient(180deg, #f5f6f8 0%, #e9ecf0 100%);
 }
 
 *,
@@ -38,17 +62,46 @@
 
 html {
   -webkit-text-size-adjust: 100%;
+  background: var(--paper);
 }
 
 body {
   margin: 0;
-  background: var(--paper);
+  /* The soft backdrop sits on a fixed layer (works on phones too, where
+     background-attachment: fixed is ignored or slow). */
+  background: transparent;
   color: var(--ink);
   font-family: var(--font-ui);
   font-size: 16px;
   line-height: 1.5;
   overflow-wrap: anywhere;
   -webkit-font-smoothing: antialiased;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  background: var(--backdrop);
+  pointer-events: none;
+}
+
+/* Glass surfaces: cards, panels, side columns, tables. */
+.glass,
+.card,
+.table {
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass,
+  .card,
+  .table {
+    background: rgba(255, 255, 255, 0.92);
+  }
 }
 
 img {
@@ -86,6 +139,7 @@ a {
   background: var(--white);
   padding: 8px 12px;
   border-radius: var(--radius-btn);
+  box-shadow: var(--glass-shadow);
 }
 .skip-link:focus {
   left: 8px;
@@ -114,24 +168,29 @@ main {
 h1,
 h2,
 h3 {
-  font-weight: 900;
+  font-weight: 800;
   line-height: 1.1;
   margin: 0 0 12px;
 }
 
-/* phm-h1 on the site */
+/* Page titles: sentence case. */
 .page-title {
-  font-size: 24px;
-  font-weight: 900;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
+  font-size: 30px;
+  line-height: 1.15;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   margin: 0;
 }
-/* phl-title on the site (a car's own page) */
+@media (max-width: 480px) {
+  .page-title {
+    font-size: 26px;
+  }
+}
+/* A car's own title */
 .car-title {
   font-size: 42px;
   line-height: 1.05;
-  font-weight: 900;
+  font-weight: 800;
   letter-spacing: -0.01em;
   margin: 8px 0 0;
 }
@@ -140,21 +199,18 @@ h3 {
     font-size: 30px;
   }
 }
-/* phl-h2 on the site */
+/* Section headings: sentence case, no underline. */
 .section-title,
 .card > h2,
 .card > header > h2,
 .card > summary > h2 {
   margin: 0 0 14px;
-  padding-bottom: 10px;
-  border-bottom: 2px solid var(--ink);
-  font-size: 17px;
-  line-height: 1.2;
-  font-weight: 900;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-size: 18px;
+  line-height: 1.25;
+  font-weight: 800;
+  letter-spacing: -0.005em;
 }
-/* phl-eyebrow */
+/* Eyebrow: small red mono label */
 .eyebrow {
   display: flex;
   flex-wrap: wrap;
@@ -166,7 +222,7 @@ h3 {
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-/* phl-back */
+/* Back links */
 .back {
   display: inline-block;
   margin-bottom: 14px;
@@ -181,7 +237,7 @@ h3 {
   color: var(--ink);
 }
 
-/* phl-headline */
+/* Lede under a title */
 .lede {
   color: var(--muted);
   font-size: 16px;
@@ -209,25 +265,27 @@ h3 {
 
 /* Cards */
 .card {
-  background: var(--white);
-  border: 1px solid var(--line);
   border-radius: var(--radius-card);
   padding: 22px;
 }
-/* phm-card: clickable tiles lift on hover */
-.tile {
-  border-radius: var(--radius-tile);
+/* Clickable cards lift on hover */
+.tile,
+a.card {
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
+.tile {
+  border-radius: var(--radius-tile);
+}
 a.tile:hover,
+a.card:hover,
 .tile:has(> a:hover) {
   transform: translateY(-2px);
-  box-shadow: 0 10px 24px rgba(21, 23, 27, 0.1);
+  box-shadow: var(--glass-shadow-lift);
 }
-/* phm-photo placeholder when there is no photo */
+/* Photo placeholder when there is no photo */
 .stripes {
   background-image: var(--stripes);
-  color: #9ba0a8;
+  color: var(--muted);
 }
 
 /* Spec rows */
@@ -236,8 +294,8 @@ a.tile:hover,
   align-items: baseline;
   justify-content: space-between;
   gap: 10px;
-  padding: 7px 0;
-  border-bottom: 1px dashed var(--line);
+  padding: 8px 0;
+  border-bottom: 1px solid var(--hair);
 }
 .spec-row > :last-child {
   text-align: right;
@@ -255,18 +313,19 @@ a.tile:hover,
 }
 
 /* Badges */
-/* phm-badge */
+/* Pills */
 .badge {
   display: inline-flex;
   align-items: center;
   font-family: var(--font-mono);
   text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 9.5px;
-  font-weight: 500;
-  padding: 3px 7px;
-  border-radius: 4px;
-  border: 1px solid var(--line);
+  letter-spacing: 0.1em;
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 0;
   background: var(--badge-bg);
   color: var(--muted);
   white-space: nowrap;
@@ -274,12 +333,10 @@ a.tile:hover,
 .badge--ok {
   color: var(--ok);
   background: var(--ok-bg);
-  border-color: var(--ok-line);
 }
 .badge--red {
-  color: var(--white);
-  background: var(--red);
-  border-color: var(--red);
+  color: var(--red-dark);
+  background: rgba(213, 0, 28, 0.1);
 }
 
 /* Buttons */
@@ -294,30 +351,38 @@ a.tile:hover,
   border: 1px solid var(--red);
   background: var(--red);
   color: var(--white);
+  box-shadow: 0 6px 16px rgba(213, 0, 28, 0.22);
   font: inherit;
   font-size: 15px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.01em;
   text-decoration: none;
   cursor: pointer;
-  transition: background-color 0.15s ease;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
 }
 .btn:hover {
   background: var(--red-dark);
   border-color: var(--red-dark);
 }
+.btn:focus-visible {
+  box-shadow: var(--focus);
+}
 .btn--secondary {
-  background: var(--white);
+  background: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(12px) saturate(160%);
+  backdrop-filter: blur(12px) saturate(160%);
   color: var(--ink);
-  border-color: var(--ink);
+  border-color: rgba(21, 23, 27, 0.12);
+  box-shadow: 0 1px 2px rgba(21, 23, 27, 0.05);
 }
 .btn--secondary:hover {
-  background: var(--paper);
-  border-color: var(--ink);
+  background: rgba(255, 255, 255, 0.92);
+  border-color: rgba(21, 23, 27, 0.22);
 }
 .btn[disabled] {
   opacity: 0.5;
   cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* Forms */
@@ -331,25 +396,32 @@ a.tile:hover,
 }
 .field input,
 .field select,
-.field textarea {
+.field textarea,
+.input {
   width: 100%;
-  min-height: var(--tap);
+  min-height: 48px;
   padding: 10px 14px;
   font: inherit;
   font-size: 17px;
   color: var(--ink);
-  background: var(--white);
-  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.7);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(21, 23, 27, 0.12);
   border-radius: var(--radius-btn);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 .field textarea {
   min-height: 140px;
   resize: vertical;
 }
-.field input:focus-visible,
-.field select:focus-visible,
-.field textarea:focus-visible {
-  border-color: var(--ink);
+.field input:focus,
+.field select:focus,
+.field textarea:focus,
+.input:focus {
+  outline: none;
+  border-color: var(--red);
+  box-shadow: 0 0 0 4px rgba(213, 0, 28, 0.15);
 }
 .field .hint {
   color: var(--muted);
@@ -470,8 +542,10 @@ legend {
   line-height: 1;
 }
 .stat.is-alert {
-  border-color: var(--red);
-  box-shadow: inset 4px 0 0 var(--red);
+  box-shadow: inset 4px 0 0 var(--red), var(--glass-shadow);
+}
+a.stat.is-alert:hover {
+  box-shadow: inset 4px 0 0 var(--red), var(--glass-shadow-lift);
 }
 .stat.is-alert .stat__n {
   color: var(--red);
@@ -485,9 +559,8 @@ legend {
 /* Data tables (desktop), stacked rows on small screens */
 .table {
   width: 100%;
-  border-collapse: collapse;
-  background: var(--white);
-  border: 1px solid var(--line);
+  border-collapse: separate;
+  border-spacing: 0;
   border-radius: var(--radius-card);
   overflow: hidden;
 }
@@ -499,20 +572,20 @@ legend {
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--muted);
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--line);
-  background: var(--paper);
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--hair);
+  background: rgba(255, 255, 255, 0.35);
 }
 .table td {
   padding: 14px 16px;
-  border-bottom: 1px dashed var(--line);
+  border-bottom: 1px solid var(--hair);
   vertical-align: middle;
 }
 .table tr:last-child td {
   border-bottom: 0;
 }
 .table tbody tr:hover {
-  background: #fbfbf9;
+  background: rgba(255, 255, 255, 0.45);
 }
 .table .num {
   font-family: var(--font-mono);
@@ -535,7 +608,7 @@ legend {
   }
   .table tr {
     padding: 10px 0;
-    border-bottom: 1px dashed var(--line);
+    border-bottom: 1px solid var(--hair);
   }
   .table td {
     border: 0;
@@ -552,18 +625,20 @@ legend {
   }
 }
 
-/* phl-facts: bordered grid of key facts */
+/* Facts: a glass grid of key facts split by hairlines */
 .facts {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 2px solid var(--ink);
-  border-left: 1px solid var(--line);
-  background: var(--white);
+  gap: 1px;
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: var(--hair);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
 }
 .fact {
   padding: 12px 14px;
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.78);
   min-width: 0;
 }
 .fact__label {
@@ -586,7 +661,7 @@ legend {
   }
 }
 
-/* phl-buy: the price box */
+/* The price box */
 .buy__label {
   color: var(--muted);
   font-family: var(--font-mono);
@@ -602,12 +677,16 @@ legend {
   font-weight: 600;
 }
 
-/* phl-trust: dark reassurance box */
+/* Dark glass reassurance box */
 .trust {
   padding: 16px 18px;
   border-radius: var(--radius-card);
-  background: var(--ink);
-  color: #c8cbd0;
+  background: var(--glass-dark);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 10px 30px rgba(21, 23, 27, 0.14);
+  color: #d4d7dc;
   font-size: 13px;
   line-height: 1.55;
 }
@@ -623,7 +702,7 @@ legend {
   margin: 0;
 }
 
-/* phl-layout: content plus a 360px side column */
+/* Content plus a 360px side column */
 .with-side {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -645,7 +724,7 @@ legend {
   }
 }
 
-/* phm-foot */
+/* Footer */
 .site-foot {
   margin: 30px auto 0;
   padding: 0 16px 28px;
