@@ -31,12 +31,23 @@ const tabs = [
 </nav>
 
 <style>
+  /* A glass pill bar of tabs. */
   .admin-nav {
     display: flex;
     flex-wrap: wrap;
-    gap: 0 18px;
-    margin-bottom: 16px;
+    gap: 4px;
+    width: fit-content;
+    max-width: 100%;
+    margin-bottom: 20px;
+    padding: 4px;
+    border-radius: 14px;
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    border: 1px solid var(--glass-border);
+    box-shadow: var(--glass-shadow);
     font-weight: 700;
+    font-size: 15px;
   }
   .admin-nav a {
     color: var(--muted);
@@ -44,6 +55,13 @@ const tabs = [
     min-height: var(--tap);
     display: inline-flex;
     align-items: center;
+    padding: 0 14px;
+    border-radius: 10px;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+  .admin-nav a:hover {
+    color: var(--ink);
+    background: rgba(255, 255, 255, 0.6);
   }
   .n {
     display: inline-grid;
@@ -60,6 +78,16 @@ const tabs = [
   }
   .admin-nav a[aria-current] {
     color: var(--ink);
-    box-shadow: inset 0 -3px 0 var(--red);
+    background: var(--white);
+    box-shadow: 0 1px 3px rgba(21, 23, 27, 0.08), inset 0 -2px 0 var(--red);
+  }
+  @media (max-width: 480px) {
+    .admin-nav {
+      width: 100%;
+    }
+    .admin-nav a {
+      padding: 0 10px;
+      font-size: 14px;
+    }
   }
 </style>

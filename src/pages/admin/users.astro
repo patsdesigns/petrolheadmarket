@@ -182,13 +182,22 @@ const fmtDate = (d: Date | null) =>
   .search input {
     flex: 1 1 240px;
     min-width: 0;
-    min-height: var(--tap);
+    min-height: 48px;
     padding: 10px 14px;
     border: 1px solid var(--line);
     border-radius: var(--radius-btn);
-    background: var(--white);
+    background: rgba(255, 255, 255, 0.7);
+    -webkit-backdrop-filter: blur(12px);
+    backdrop-filter: blur(12px);
     font: inherit;
     font-size: 16px;
+    color: var(--ink);
+  }
+  .search input:focus,
+  .link-box:focus {
+    outline: none;
+    border-color: var(--red);
+    box-shadow: 0 0 0 4px rgba(213, 0, 28, 0.15);
   }
   .clear {
     color: var(--muted);
@@ -200,7 +209,7 @@ const fmtDate = (d: Date | null) =>
     font: 13px/1.4 var(--font-mono);
     border: 1px solid var(--line);
     border-radius: var(--radius-btn);
-    background: var(--white);
+    background: rgba(255, 255, 255, 0.7);
   }
   .sr-only {
     position: absolute;

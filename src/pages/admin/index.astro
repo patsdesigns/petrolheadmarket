@@ -198,7 +198,7 @@ const waited = (d: Date | null) => {
 
 <style>
   .warn {
-    border-color: var(--red);
+    box-shadow: inset 4px 0 0 var(--red), var(--glass-shadow);
     margin-bottom: 20px;
   }
   .queue {
@@ -222,6 +222,7 @@ const waited = (d: Date | null) => {
     padding: 0;
   }
   .item a {
+    border-radius: inherit;
     display: grid;
     gap: 6px;
     padding: 16px 18px;

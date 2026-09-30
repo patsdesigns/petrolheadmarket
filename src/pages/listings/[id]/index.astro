@@ -336,8 +336,9 @@ const deleteConfirm =
     position: absolute;
     top: 16px;
     left: 0;
-    padding: 5px 12px 5px 14px;
-    border-radius: 0 4px 4px 0;
+    padding: 5px 12px;
+    left: 16px;
+    border-radius: 999px;
     background: var(--red);
     color: #fff;
     font-family: var(--font-mono);
@@ -354,7 +355,7 @@ const deleteConfirm =
     width: 100%;
     aspect-ratio: 4 / 3;
     object-fit: cover;
-    border-radius: 6px;
+    border-radius: 8px;
   }
   @media (max-width: 720px) {
     .thumbs {
@@ -375,14 +376,15 @@ const deleteConfirm =
   .status-note {
     margin: 4px 0 6px;
     padding-top: 12px;
-    border-top: 1px dashed var(--line);
+    border-top: 1px solid var(--hair);
     color: var(--muted);
     font-size: 14px;
   }
   .notes {
     padding: 10px 12px;
     border-left: 4px solid var(--red);
-    background: var(--paper);
+    border-radius: 0 10px 10px 0;
+    background: var(--red-tint);
   }
   .notes p {
     margin: 4px 0 0;
@@ -397,7 +399,7 @@ const deleteConfirm =
     display: flex;
     justify-content: space-between;
     padding-top: 12px;
-    border-top: 1px dashed var(--line);
+    border-top: 1px solid var(--hair);
     font-family: var(--font-mono);
     font-size: 12px;
     text-transform: uppercase;

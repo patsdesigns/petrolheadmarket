@@ -331,42 +331,38 @@ Better Auth's own tables, plus:
 - httpOnly, secure session cookies. CSRF protection on all mutations (Better Auth covers its routes, cover the rest).
 - Store the minimum. The CMS only ever gets the seller's display name and, if chosen, their phone.
 
-## Design (match the Webflow site exactly)
+## Design (glass, shared with the Webflow site)
 
-The app should feel like the same site. Copy the look, do not invent a new one.
+The app and the public Webflow site use the same clean glass design (redesigned September 2026 at the owner's request). Copy the look, do not invent a new one. Tokens live in `:root` in `src/styles/global.css`; the header is `src/components/Header.astro`. If the Webflow site changes, update them to match.
 
 **Colors**
-- Ink `#15171B` (text, dark header, secondary button borders)
-- Red `#D5001C` (primary buttons, flags, key accents)
-- Paper `#F6F6F3` (page background)
-- White `#FFFFFF` (cards)
-- Line `#DDDDD5` (borders, dashed dividers)
-- Muted `#5A5E66` (secondary text)
-- OK green `#1A6B3C` on `#EAF4EE` with border `#CBE3D4` (positive badges)
+- Ink `#15171B` (text), Muted `#5A5E66` (secondary text), Red `#D5001C` (primary buttons and key accents only), Red dark `#B00017` (hover), OK green `#1A6B3C` on `rgba(26,107,60,0.10)`.
+- Page background `#EEF0F3` with a soft fixed backdrop (`--backdrop`: faint red and blue-grey radial glows over a `#F5F6F8` to `#E9ECF0` gradient). It sits on a fixed `body::before` layer, so it also works on phones where `background-attachment: fixed` is ignored.
+- Hairlines inside glass (spec rows, dividers, table rows): `--hair` `rgba(21,23,27,0.08)`, solid, never dashed. Input and button borders: `--line` `rgba(21,23,27,0.12)`.
+
+**Surfaces**
+- Glass (`.card`, `.table`, `.glass`, panels, side columns, notices, the inbox): `rgba(255,255,255,0.62)`, `backdrop-filter: blur(20px) saturate(170%)`, 1px `rgba(255,255,255,0.75)` border, a soft inset highlight plus shadow (`--glass-shadow`). Fallback without backdrop-filter: `rgba(255,255,255,0.92)`.
+- Strong glass (header, dropdown menus): `rgba(255,255,255,0.72)` with blur 24px. The header's blur sits on a `::before` layer so the account menu inside it can blur the page too.
+- Dark glass (`.trust`, SafetyNote, the auth brand panel): `rgba(21,23,27,0.82)` with blur, white text, 16px radius.
+- Radius: 16px cards and panels, 12px inputs and buttons (10px header buttons), 999px badges and pills.
+- Photo placeholders: `--stripes` is now a soft neutral gradient `linear-gradient(135deg, #DDE1E7, #C9CED6)`.
+- Clickable cards lift 2px on hover with a bigger shadow (off under reduced motion).
 
 **Type**
-- Archivo for UI and headings (headings weight 900, uppercase for page titles)
-- IBM Plex Mono for prices, specs, small labels, and badges (uppercase, letter spacing around 0.12em, 10 to 12px)
-- Both load from Google Fonts
+- Archivo for UI and headings, IBM Plex Mono for prices, specs, small labels and badges (uppercase, letter spacing around 0.1em, 10 to 12px). Both load from Google Fonts.
+- Page titles (`.page-title`): Archivo 800, 30px, letter-spacing -0.01em, sentence case (no longer uppercase). Section headings (`.section-title`, card h2): 18px 800, sentence case, no underline.
 
 **Components**
-- Header: dark `#15171B` bar, red ringed white circle logo with "PH", wordmark "Petrol Head Market" with "Enthusiast car classifieds" under it in mono, links right. Logo links to `/` (the Webflow site, not `/app`). Signed in: My garage, Inbox with unread count, account menu.
-- Cards: white, 1px `#DDDDD5` border, 10 to 12px radius
-- Spec rows: label left in muted mono, value right, dashed bottom border
-- Primary button: red background, white bold text, 8px radius. Secondary: white with 1px ink border.
-- Forms: large inputs, labels above, errors under the field in red, 44px minimum tap targets
-
-**Matched to the Webflow site's classes** (read from the site in September 2026)
-- Frame: 1180px content, 20px gutters (`phm-mast-inner`, `phm-grid`).
-- Header (`Site Header` component): sticky; dark bar with 40px roundel (3px red ring), uppercase wordmark 17px/900/0.06em, mono sub line 9.5px `#9BA0A8`; ghost buttons (`#3A3E45` border, `#C8CBD0` text, 13px, 6px radius) and a red Sell button (13px, 6px radius); red promise strip underneath: "Every listing vetted · 20-photo minimum · No auctions · Nothing stale".
-- Page title = `phm-h1` (24px, 900, uppercase). Car title = `phl-title` (42px). Section headings = `phl-h2` (17px uppercase with a 2px ink underline).
-- Badges = `phm-badge` (4px radius, `#EDEDE8`, 9.5px mono). Back links = `phl-back`. Eyebrows = `phl-eyebrow` (red mono).
-- Price box = `phl-buy` (label 10px mono, price 34px mono). Facts grid = `phl-facts`. Dark info box = `phl-trust`. Content plus side column = `phl-layout` (1fr and 360px, 44px gap).
-- Car cards = `phm-card` (10px radius, lift on hover) with striped placeholder and photo count tag.
-- The app's equivalents live in `src/styles/global.css` and `src/components/Header.astro`. If the Webflow site changes, update them to match.
+- Header: sticky light strong-glass bar, 64px tall (`--header-h: 64px`), ink text, 1px bottom hairline `rgba(21,23,27,0.06)`. Roundel logo (white circle, 3px red ring, "PH"), wordmark "Petrol Head Market" in ink (900, uppercase, 17px, 0.06em) with the mono sub line "Enthusiast car classifieds" in muted. Logo links to `/` (the Webflow site). Glass secondary buttons (ink text) and the red Sell button, radius 10px; unread and to-do counts are red pills. The red promise strip under the header was removed at the owner's request.
+- Buttons: primary red, white 700 text, 12px radius, 44px minimum height, shadow `0 6px 16px rgba(213,0,28,0.22)`, hover red dark. Secondary: white 0.7 glass with blur, 1px `rgba(21,23,27,0.12)` border, ink text. Link buttons stay plain.
+- Inputs: `rgba(255,255,255,0.7)` with blur 12px, 1px `rgba(21,23,27,0.12)` border, 12px radius, 48px minimum height; focus is a red border plus a `0 0 0 4px rgba(213,0,28,0.15)` ring. Labels above, errors under the field in red.
+- Badges: pills, `rgba(21,23,27,0.06)` background, no border, mono 10.5px uppercase 0.1em, muted text. Status badges keep their meaning as soft tints (OK green, red for changes requested and rejected).
+- Spec rows: label left in muted mono, value right, solid hairline under each row. Facts grid (`.facts`): glass tiles split by hairlines.
+- Admin tabs (`AdminNav`): a glass pill bar, the current tab white with a red underline.
+- Frame: 1180px content, 20px gutters. Content plus side column = `.with-side` (1fr and 360px, 44px gap).
 
 **Principles**
-- Desktop first (changed from mobile first at the owner's request). Design each screen for a 1280 to 1440px desktop: use the width with multi-column layouts, side panels and tables. Write base CSS for desktop and use `max-width` media queries to adapt down. Every screen must still work at 360px with no horizontal scroll, because many sellers upload photos from a phone. The site header is sticky, so sticky side columns use `top: calc(var(--header-h) + 20px)` (the `--header-h` token in `global.css`), and a sticky column that can be taller than the screen scrolls on its own (`max-height` plus `overflow-y: auto`).
+- Desktop first (changed from mobile first at the owner's request). Design each screen for a 1280 to 1440px desktop: use the width with multi-column layouts, side panels and tables. Write base CSS for desktop and use `max-width` media queries to adapt down. Every screen must still work at 360px with no horizontal scroll, because many sellers upload photos from a phone. The site header is sticky, so sticky side columns use `top: calc(var(--header-h) + 20px)` (the `--header-h` token in `global.css`, 64px), and a sticky column that can be taller than the screen scrolls on its own (`max-height` plus `overflow-y: auto`).
 - Fast. Server render everything, keep client JS to the islands listed above, lazy load images.
 - No em dashes or en dashes anywhere in user-facing text (pages, notices, emails).
 - Sentence case, plain words. Buttons say exactly what happens: "Submit for review", "Send offer", "Accept offer", "Mark as sold".

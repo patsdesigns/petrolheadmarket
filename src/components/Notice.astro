@@ -11,20 +11,25 @@ const { tone = "info" } = Astro.props;
 
 <style>
   .notice {
-    border-radius: var(--radius-btn);
-    padding: 12px 14px;
+    border-radius: 14px;
+    padding: 13px 16px;
     margin-bottom: 18px;
-    border: 1px solid var(--line);
-    background: var(--paper);
+    border: 1px solid var(--glass-border);
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow);
   }
   .notice--error {
-    border-color: var(--red);
-    background: #fdf0f1;
+    border-color: rgba(213, 0, 28, 0.35);
+    background: rgba(253, 236, 238, 0.82);
+    box-shadow: inset 4px 0 0 var(--red), var(--glass-shadow);
     color: var(--ink);
   }
   .notice--ok {
     border-color: var(--ok-line);
-    background: var(--ok-bg);
+    background: rgba(233, 245, 238, 0.85);
+    box-shadow: inset 4px 0 0 var(--ok), var(--glass-shadow);
     color: var(--ok);
   }
   .notice :global(p) {

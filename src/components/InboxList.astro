@@ -58,13 +58,14 @@ const when = (d: Date) => {
     padding: 14px 16px;
     text-decoration: none;
     color: inherit;
-    border-bottom: 1px solid var(--line);
+    border-bottom: 1px solid var(--hair);
+    transition: background-color 0.15s ease;
   }
   .inbox-row:hover {
-    background: var(--paper);
+    background: rgba(255, 255, 255, 0.5);
   }
   .inbox-row.is-active {
-    background: var(--paper);
+    background: rgba(255, 255, 255, 0.8);
     box-shadow: inset 3px 0 0 var(--red);
   }
   .inbox-row.is-unread .inbox-row__preview {

@@ -3,13 +3,22 @@
   display: grid;
   grid-template-columns: 360px minmax(0, 1fr);
   min-height: 560px;
-  background: var(--white);
-  border: 1px solid var(--line);
+  background: var(--glass);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
   border-radius: var(--radius-card);
   overflow: hidden;
 }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .inbox {
+    background: rgba(255, 255, 255, 0.92);
+  }
+}
 .inbox__list {
-  border-right: 1px solid var(--line);
+  border-right: 1px solid var(--hair);
+  background: rgba(255, 255, 255, 0.25);
   overflow-y: auto;
   max-height: 78vh;
 }

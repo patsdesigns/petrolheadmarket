@@ -305,8 +305,7 @@ const waitingOnMe = (t: OfferThread) =>
     gap: 12px;
   }
   .offer.is-waiting {
-    border-color: var(--red);
-    box-shadow: inset 4px 0 0 var(--red);
+    box-shadow: inset 4px 0 0 var(--red), var(--glass-shadow);
   }
   .offer__head {
     display: flex;
@@ -316,7 +315,7 @@ const waitingOnMe = (t: OfferThread) =>
     flex-wrap: wrap;
   }
   .offer__car {
-    font-weight: 900;
+    font-weight: 800;
     font-size: 18px;
     color: var(--ink);
   }
@@ -351,6 +350,7 @@ const waitingOnMe = (t: OfferThread) =>
     border-radius: var(--radius-btn);
     background: var(--ok-bg);
     border: 1px solid var(--ok-line);
+    box-shadow: inset 4px 0 0 var(--ok);
   }
   .contact p {
     margin: 4px 0;
