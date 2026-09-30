@@ -13,7 +13,7 @@ const RESERVED_NAME = /(^|[^\p{L}])(petrol\s*head|phm|admin|administrator|suppor
 const WEB_ADDRESS = /(^|[^\p{L}])www([^\p{L}]|$)|\.(com|net|org|io|co|us|app|me|info|biz|xyz|shop|site|online|link)($|[^\p{L}])/iu;
 
 /**
- * The public display name: shown on listings (the CMS), in messages and in
+ * The public display name: shown on car pages, in messages and in
  * emails, so it must look like a person's name, like "Dave K.".
  */
 export const displayNameField = z

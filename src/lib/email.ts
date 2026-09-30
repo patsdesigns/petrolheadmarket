@@ -61,7 +61,7 @@ function domainOf(address: string): string {
  * domain and the subject, never links, tokens or bodies. The one exception
  * is the password reset to an ADMIN_EMAILS address, which is logged in full
  * so the owner can reset (and so confirm, or take back) his own account from
- * the Webflow Cloud log while email is off. Every other email to an admin is
+ * the Cloudflare Workers log while email is off. Every other email to an admin is
  * logged like any other (it can hold contact details or message text).
  */
 export async function sendEmail(email: Email): Promise<boolean> {

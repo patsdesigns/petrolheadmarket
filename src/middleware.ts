@@ -57,15 +57,6 @@ function sameOrigin(request: Request): boolean {
 
 let loggedHeaderNames = false;
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
-/** GET /api/listings/{slug}/photos: the public gallery JSON (a UUID there is the seller's uploader). */
-function isPublicGallery(path: string, method: string): boolean {
-  if (method !== "GET" && method !== "HEAD") return false;
-  const m = /^\/api\/listings\/([^/]+)\/photos\/?$/.exec(path);
-  return !!m && !UUID.test(m[1]);
-}
-
 /**
  * Read any request body the route left unread (an early error, a redirect).
  * An unread upload left on a kept-alive connection breaks the next request
@@ -133,14 +124,9 @@ const handle = async (context: APIContext, next: MiddlewareNext): Promise<Respon
     return out;
   };
 
-  // Better Auth's own routes, public photos and the public gallery JSON don't
-  // need the session lookup (so they stay cacheable and cost no D1 reads).
-  if (
-    !path.startsWith("/api/auth/") &&
-    !path.startsWith("/photos/") &&
-    path !== "/api/health" &&
-    !isPublicGallery(path, request.method)
-  ) {
+  // Better Auth's own routes and public photos don't need the session
+  // lookup (so they stay cacheable and cost no D1 reads).
+  if (!path.startsWith("/api/auth/") && !path.startsWith("/photos/") && path !== "/api/health") {
     // If auth can't start (for example BETTER_AUTH_SECRET is not set yet),
     // treat the visitor as signed out rather than failing every page.
     const result = await (async () =>

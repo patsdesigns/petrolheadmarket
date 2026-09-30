@@ -1,14 +1,11 @@
 ---
 // Tabs across the top of every admin page.
 import { url } from "../lib/paths";
-import { scheduleCmsRetry } from "../lib/cms";
 
 interface Props {
   current: "queue" | "listings" | "users" | "flags" | "contact";
 }
 const { current } = Astro.props;
-// Every admin page nudges the lazy CMS retry (throttled to once a minute).
-if (Astro.request.method === "GET") await scheduleCmsRetry();
 const counts = Astro.locals.adminCounts;
 const tabs = [
   { key: "queue", label: "Review queue", href: url("/admin"), n: counts?.review ?? 0, what: "waiting for review" },

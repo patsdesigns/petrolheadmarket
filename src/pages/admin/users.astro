@@ -6,7 +6,7 @@ import { url } from "../../lib/paths";
 import { emailConfigured, isAdminEmail } from "../../lib/config";
 import { adminResetLink, confirmEmail, searchUsers, suspendUser, unsuspendUser, type AdminResult } from "../../lib/admin-users";
 
-// Middleware already limits /app/admin to admins; check again here.
+// Middleware already limits /admin to admins; check again here.
 const admin = Astro.locals.user!;
 if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
 

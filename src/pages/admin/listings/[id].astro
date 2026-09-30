@@ -1,5 +1,5 @@
 ---
-import { and, count, eq, isNull, lt, or } from "drizzle-orm";
+import { and, count, eq, or } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import Base from "../../../layouts/Base.astro";
 import Field from "../../../components/Field.astro";
@@ -22,7 +22,7 @@ import {
 import { STATUS_LABELS } from "../../../lib/listing-options";
 import { checklist, listingTitle, parseStep, type ListingField } from "../../../lib/listing-rules";
 import { getPhotos, photoView } from "../../../lib/listings";
-import { publishListing, resyncListing, scheduleCmsRetry, syncListing, type PublishResult } from "../../../lib/cms";
+import { IN_CMS_STATUSES, publishListing, type PublishResult } from "../../../lib/cms";
 import { takeDownListing } from "../../../lib/take-down";
 import { audit, auditFor } from "../../../lib/audit";
 import { notifySellerChanges, notifySellerRejected } from "../../../lib/notify";
@@ -38,29 +38,19 @@ const load = () => db.select().from(listings).where(eq(listings.id, id)).get();
 let listing = await load();
 if (!listing || listing.status === "draft") return Astro.rewrite(url("/404"));
 
-const IN_CMS = ["live", "offer_accepted", "sold"];
+// Statuses whose listing is on the Lot.
+const ON_THE_LOT: readonly string[] = IN_CMS_STATUSES;
 const selfUrl = url(`/admin/listings/${id}`);
-const cmsConfigured = true;
 
-// An approved listing that is not in the CMS yet (and not mid publish) can
-// still be sent back, rejected or moved back to review.
-const PUBLISH_LEASE_MS = 2 * 60_000;
-const notPublishing = () =>
-  and(
-    eq(listings.status, "approved"),
-    isNull(listings.cmsItemId),
-    or(isNull(listings.publishingAt), lt(listings.publishingAt, new Date(Date.now() - PUBLISH_LEASE_MS))),
-  );
+// Approving publishes at once, so `approved` is only a brief in-between
+// state. A listing left there (a publish that failed) can still be
+// published, sent back, rejected or moved back to review.
+const isApproved = () => eq(listings.status, "approved");
 const publishRedirect = (r: PublishResult) =>
-  Astro.redirect(
-    `${selfUrl}?${r.ok ? "published=1" : "busy" in r && r.busy ? "publishing=1" : "notConfigured" in r && r.notConfigured ? "queued=1" : "publish_failed=1"}`,
-    303,
-  );
+  Astro.redirect(`${selfUrl}?${r.ok ? "published=1" : "publish_failed=1"}`, 303);
 
 let errors: Partial<Record<ListingField, string>> = {};
 let notesError = "";
-// A save with field errors still keeps (and syncs) the valid fields.
-let partialSync: "synced" | "failed" | null = null;
 let actionError = "";
 let posted: Record<string, string> | null = null;
 
@@ -94,18 +84,8 @@ if (Astro.request.method === "POST") {
       await db.update(listings).set({ ...data, updatedAt: new Date() }).where(eq(listings.id, id));
       await audit(admin.id, "admin_edit", "listing", id, { fields: changed });
     }
-    const valid = Object.keys(errors).length === 0;
-    // Sync even when nothing changed, so saving again fixes a site that is
-    // behind. With field errors, sync the valid changes that were saved, so
-    // the Lot never silently keeps old values.
-    if (listing.cmsItemId && IN_CMS.includes(listing.status) && (valid || changed.length > 0)) {
-      const r = await syncListing(id, admin.id);
-      partialSync = r.ok ? "synced" : "failed";
-    }
-    if (valid) {
-      const q = partialSync === "synced" ? "saved=1&synced=1" : partialSync === "failed" ? "saved=1&sync_failed=1" : "saved=1";
-      return Astro.redirect(`${selfUrl}?${q}`, 303);
-    }
+    // A save with field errors still keeps the valid fields.
+    if (Object.keys(errors).length === 0) return Astro.redirect(`${selfUrl}?saved=1`, 303);
   } else if (intent === "approve") {
     const issues = checklist(listing, (await getPhotos(id)).length);
     if (listing.status !== "submitted") actionError = "Only listings in review can be approved.";
@@ -120,25 +100,20 @@ if (Astro.request.method === "POST") {
       // A double click: the first request decided it and is publishing.
       if (!won) return Astro.redirect(selfUrl, 303);
       await audit(admin.id, "approve", "listing", id, notes ? { notes } : undefined);
-      if (!cmsConfigured) {
-        await audit(admin.id, "cms_publish_deferred", "listing", id, { reason: "WEBFLOW_API_TOKEN is not set" });
-        return Astro.redirect(`${selfUrl}?queued=1`, 303);
-      }
       // publishListing emails the seller when it goes live.
       return publishRedirect(await publishListing(id, admin.id));
     }
-  } else if (intent === "retry") {
-    if (listing.status !== "approved") actionError = "Only approved listings can be retried.";
-    else if (!cmsConfigured) actionError = "Publishing is not available.";
+  } else if (intent === "publish") {
+    if (listing.status !== "approved") actionError = "Only approved listings can be published.";
     else return publishRedirect(await publishListing(id, admin.id));
   } else if (intent === "unapprove") {
     const moved = await db
       .update(listings)
       .set({ status: "submitted", updatedAt: new Date() })
-      .where(and(eq(listings.id, id), notPublishing()))
+      .where(and(eq(listings.id, id), isApproved()))
       .returning({ id: listings.id })
       .get();
-    if (!moved) actionError = "Only approved listings that are not on the site yet can go back to review.";
+    if (!moved) actionError = "Only approved listings that are not live yet can go back to review.";
     else {
       await audit(admin.id, "move_back_to_review", "listing", id);
       return Astro.redirect(`${selfUrl}?reopened=1`, 303);
@@ -153,11 +128,11 @@ if (Astro.request.method === "POST") {
       const status = intent === "changes" ? "changes_requested" : "rejected";
       const decided = await db
         .update(listings)
-        .set({ status, reviewNotes: notes, reviewerId: admin.id, reviewedAt: new Date(), publishingAt: null, updatedAt: new Date() })
-        .where(and(eq(listings.id, id), or(eq(listings.status, "submitted"), notPublishing())))
+        .set({ status, reviewNotes: notes, reviewerId: admin.id, reviewedAt: new Date(), updatedAt: new Date() })
+        .where(and(eq(listings.id, id), or(eq(listings.status, "submitted"), isApproved())))
         .returning({ id: listings.id })
         .get();
-      if (!decided) actionError = "Only listings in review, or approved but not on the site yet, can be sent back or rejected.";
+      if (!decided) actionError = "Only listings in review, or approved but not live yet, can be sent back or rejected.";
       else {
         await audit(admin.id, intent === "changes" ? "request_changes" : "reject", "listing", id, { notes });
         const seller = await sellerOf(listing);
@@ -170,12 +145,9 @@ if (Astro.request.method === "POST") {
     if (notes.length < 10) notesError = "Tell the seller why it was taken down. They will see this note.";
     else {
       const r = await takeDownListing(listing, admin.id, { by: "admin", note: notes });
-      if (r.ok) return Astro.redirect(`${selfUrl}?taken_down=${r.unpublished ? "1" : "pending"}`, 303);
+      if (r.ok) return Astro.redirect(`${selfUrl}?taken_down=1`, 303);
       actionError = r.error;
     }
-  } else if (intent === "resync") {
-    const r = await resyncListing(id, admin.id);
-    return Astro.redirect(`${selfUrl}?${r.ok ? "synced_now=1" : "sync_failed=1"}`, 303);
   } else if (intent === "delete-photo") {
     const photo = await db
       .select()
@@ -186,17 +158,10 @@ if (Astro.request.method === "POST") {
       await db.delete(listingPhotos).where(eq(listingPhotos.id, photo.id));
       await env.PHOTOS.delete(photo.r2Key);
       await audit(admin.id, "delete_photo", "listing", id, { photoId: photo.id });
-      if (listing.cmsItemId && IN_CMS.includes(listing.status)) {
-        const r = await syncListing(id, admin.id);
-        if (!r.ok) return Astro.redirect(`${selfUrl}?sync_failed=1#photos`, 303);
-      }
     }
     return Astro.redirect(`${selfUrl}#photos`, 303);
   }
 }
-
-// Lazy retry of pending publishes and syncs (throttled, no cron), after the response.
-if (Astro.request.method === "GET") await scheduleCmsRetry();
 
 listing = (await load())!;
 const photos = await getPhotos(id);
@@ -210,7 +175,7 @@ const history = await auditFor("listing", id, 30);
 // Only failures since this approval count.
 const lastPublishError =
   listing.status === "approved"
-    ? (history.find((h) => h.action === "cms_publish_failed" && (!listing!.reviewedAt || h.createdAt >= listing!.reviewedAt))?.data as { error?: string } | null)?.error
+    ? (history.find((h) => (h.action === "publish_failed" || h.action === "cms_publish_failed") && (!listing!.reviewedAt || h.createdAt >= listing!.reviewedAt))?.data as { error?: string } | null)?.error
     : null;
 
 const v = (field: ListingField | "sellerType"): string => {
@@ -221,15 +186,9 @@ const v = (field: ListingField | "sellerType"): string => {
 const on = (field: keyof Listing) =>
   posted && posted.intent === "save" ? posted[field] === "on" : Boolean(listing![field]);
 const params = Astro.url.searchParams;
-const publishingNow =
-  listing.publishingAt !== null && Date.now() - listing.publishingAt.getTime() < PUBLISH_LEASE_MS;
-const reopenable = listing.status === "approved" && !listing.cmsItemId && !publishingNow;
+const reopenable = listing.status === "approved";
 const canDecide = listing.status === "submitted" || reopenable;
-const inCms = Boolean(listing.cmsItemId) && IN_CMS.includes(listing.status);
-const outOfSync = Boolean(listing.cmsItemId) && listing.cmsSyncPending;
-const lastSyncError = outOfSync
-  ? (history.find((h) => h.action === "cms_sync_failed" || h.action === "cms_unpublish_failed")?.data as { error?: string } | null)?.error
-  : null;
+const onTheLot = ON_THE_LOT.includes(listing.status);
 // Stops a double click sending a form twice (the server guards too).
 const onceOnly = "return !this.dataset.sent && !!(this.dataset.sent = '1')";
 const title = listingTitle(listing);
@@ -248,48 +207,28 @@ const fmtDate = (d: Date | null | undefined) =>
   )}
 
   {params.get("published") && (
-    <Notice tone="ok"><p>Published. <a href={carUrl(listing.slug)}>View it on the site</a>.{" "}
-      {emailConfigured() ? "The seller was emailed." : "Email is not set up, so the seller was not emailed."}</p></Notice>
+    <Notice tone="ok"><p>Approved. It is live on the Lot.{listing.slug && <> <a href={carUrl(listing.slug)}>View it on the Lot</a>.</>}{" "}
+      {emailConfigured() ? "The seller was emailed." : "Email is not set up, so the seller sees it in My garage."}</p></Notice>
   )}
-  {params.get("queued") && (
-    <Notice tone="ok"><p>
-      Approved. It publishes the next time you open an admin page after WEBFLOW_API_TOKEN is added in the Webflow Cloud
-      settings.{" "}
-      {emailConfigured()
-        ? "The seller is emailed when it goes live."
-        : "Email is not set up, so the seller sees the change in My garage."}
-    </p></Notice>
-  )}
-  {params.get("publishing") && <Notice tone="info"><p>Publishing is already in progress. Refresh in a moment.</p></Notice>}
   {params.get("publish_failed") && (
-    <Notice tone="error"><p>Approved, but publishing to Webflow failed. The error is below. It is retried about once a minute while you use the admin pages, or use Retry publish. You can also move it back to review.</p></Notice>
+    <Notice tone="error"><p>Approved, but it could not go live. The error is below. Use Publish now to try again, or move it back to review.</p></Notice>
   )}
   {params.get("reopened") && <Notice tone="ok"><p>Moved back to review.</p></Notice>}
   {params.get("taken_down") && (
-    <Notice tone={params.get("taken_down") === "pending" ? "error" : "ok"}><p>
-      {params.get("taken_down") === "pending"
-        ? "Taken down here and open offers were closed, but removing it from the site failed. It is retried while you use the admin pages, or use the button below."
-        : "Taken down. It is off the site and open offers were closed."}{" "}
+    <Notice tone="ok"><p>
+      Taken down. It is off the Lot now and open offers were closed.{" "}
       {emailConfigured()
         ? "The seller was emailed your note."
         : "Email is not set up, so the seller sees your note on their listing page."}
     </p></Notice>
   )}
-  {params.get("synced_now") && <Notice tone="ok"><p>The site is up to date.</p></Notice>}
-  {params.get("saved") && <Notice tone="ok"><p>Changes saved{params.get("synced") ? " and synced to the site" : ""}.</p></Notice>}
-  {params.get("sync_failed") && <Notice tone="error"><p>Saved here, but the Webflow update failed. See the error in the Decision box.</p></Notice>}
+  {params.get("saved") && <Notice tone="ok"><p>Changes saved.</p></Notice>}
   {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
   {Object.keys(errors).length > 0 && (
     <Notice tone="error"><p>
-      Some fields need fixing.{" "}
-      {partialSync === "synced"
-        ? "Everything else was saved and synced to the site."
-        : partialSync === "failed"
-          ? "Everything else was saved here, but the Webflow update failed. See the error in the Decision box."
-          : "Everything else was saved."}
+      Some fields need fixing. Everything else was saved.
     </p></Notice>
   )}
-  {!cmsConfigured && <Notice tone="info"><p>{"Publishing is not available."}</p></Notice>}
 
   <div class="layout">
     <div class="main">
@@ -396,26 +335,20 @@ const fmtDate = (d: Date | null | undefined) =>
         <h2 id="decide-h">Decision</h2>
         {
           listing.status === "approved" && (
-            cmsConfigured ? (
-              <>
-                {publishingNow ? (
-                  <Notice tone="info"><p><strong>Publishing now.</strong> Refresh in a moment.</p></Notice>
-                ) : lastPublishError ? (
-                  <Notice tone="error">
-                    <p><strong>Publishing failed.</strong> It is retried about once a minute while you use the admin pages.</p>
-                    <p class="err">{lastPublishError}</p>
-                  </Notice>
-                ) : (
-                  <Notice tone="info"><p><strong>Waiting to publish.</strong> It publishes the next time you open an admin page, or use Publish now.</p></Notice>
-                )}
-                <form method="post" onsubmit={onceOnly}>
-                  <input type="hidden" name="intent" value="retry" />
-                  <button class="btn" type="submit">{lastPublishError ? "Retry publish" : "Publish now"}</button>
-                </form>
-              </>
-            ) : (
-              <Notice tone="info"><p><strong>Approved, waiting for Webflow.</strong> It publishes the next time you open an admin page after WEBFLOW_API_TOKEN is set.</p></Notice>
-            )
+            <>
+              {lastPublishError ? (
+                <Notice tone="error">
+                  <p><strong>It could not go live.</strong></p>
+                  <p class="err">{lastPublishError}</p>
+                </Notice>
+              ) : (
+                <Notice tone="info"><p><strong>Approved, not live yet.</strong> Use Publish now to put it on the Lot.</p></Notice>
+              )}
+              <form method="post" onsubmit={onceOnly}>
+                <input type="hidden" name="intent" value="publish" />
+                <button class="btn" type="submit">Publish now</button>
+              </form>
+            </>
           )
         }
         {
@@ -424,18 +357,6 @@ const fmtDate = (d: Date | null | undefined) =>
               <input type="hidden" name="intent" value="unapprove" />
               <button class="btn btn--secondary block" type="submit">Move back to review</button>
             </form>
-          )
-        }
-        {
-          outOfSync && (
-            <Notice tone="error">
-              <p><strong>{inCms ? "The site is not up to date." : "It may still be on the site."}</strong> This is retried about once a minute while you use the admin pages.</p>
-              {lastSyncError && <p class="err">{lastSyncError}</p>}
-              <form method="post" onsubmit={onceOnly}>
-                <input type="hidden" name="intent" value="resync" />
-                <button class="btn btn--secondary" type="submit">{inCms ? "Sync to site now" : "Retry removing from the site"}</button>
-              </form>
-            </Notice>
           )
         }
         {
@@ -450,15 +371,15 @@ const fmtDate = (d: Date | null | undefined) =>
               <div class="buttons">
                 {listing.status === "submitted" && (
                   <button class="btn" type="submit" name="intent" value="approve" disabled={issues.length > 0}>
-                    {cmsConfigured ? "Approve and publish" : "Approve (goes live when Webflow is connected)"}
+                    Approve and publish
                   </button>
                 )}
                 <button class="btn btn--secondary" type="submit" name="intent" value="changes">Request changes</button>
                 <button class="btn btn--secondary reject" type="submit" name="intent" value="reject">Reject</button>
               </div>
             </form>
-          ) : inCms ? (
-            <form method="post" novalidate onsubmit="return !this.dataset.sent && confirm('Take this listing off the site? Open offers will be closed and the seller will see your note.') && !!(this.dataset.sent = '1')">
+          ) : onTheLot ? (
+            <form method="post" novalidate onsubmit="return !this.dataset.sent && confirm('Take this listing off the Lot? Open offers will be closed and the seller will see your note.') && !!(this.dataset.sent = '1')">
               <div class="field">
                 <label for="f-takedown">Take down this listing</label>
                 <span class="hint">For scams, fakes or broken rules. The seller sees your note exactly as written, and open offers are closed.</span>
@@ -471,8 +392,8 @@ const fmtDate = (d: Date | null | undefined) =>
             listing.status !== "approved" && <p class="muted">No decision needed. This listing is {STATUS_LABELS[listing.status]?.toLowerCase() ?? listing.status}.</p>
           )
         }
-        {listing.slug && IN_CMS.includes(listing.status) && (
-          <p><a href={carUrl(listing.slug)}>View on the site</a></p>
+        {listing.slug && onTheLot && (
+          <p><a href={carUrl(listing.slug)}>View on the Lot</a></p>
         )}
       </section>
 

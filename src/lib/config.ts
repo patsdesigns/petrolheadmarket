@@ -1,11 +1,11 @@
 import { env } from "cloudflare:workers";
 
-/** Origin of the public site, e.g. https://petrol-head-market.webflow.io */
+/** Origin of the public site (PUBLIC_SITE_URL). */
 export function publicOrigin(): string {
   return new URL(env.PUBLIC_SITE_URL || "http://localhost:8787").origin;
 }
 
-/** Absolute URL for links in emails. `path` should already include /app. */
+/** Absolute URL for links in emails. `path` comes from url() in paths.ts. */
 export function absoluteUrl(path: string): string {
   return new URL(path, publicOrigin()).toString();
 }
@@ -56,7 +56,7 @@ export function canTransact(user: { emailVerified: boolean }): boolean {
  * The only header trusted for the visitor IP. Cloudflare's edge sets
  * cf-connecting-ip and overwrites any value the client sends, so it cannot
  * be spoofed. Other headers (x-real-ip, x-forwarded-for and so on) can come
- * from the client and are ignored. It is often missing behind Webflow's
- * proxy, so rate limits are keyed by email first (src/lib/auth-limits.ts).
+ * from the client and are ignored. It can be missing (local runs, some
+ * proxies), so rate limits are keyed by email first (src/lib/auth-limits.ts).
  */
 export const IP_HEADERS = ["cf-connecting-ip"];

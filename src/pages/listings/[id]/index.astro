@@ -8,7 +8,7 @@ import { url, carUrl, GARAGE } from "../../../lib/paths";
 import { BODY_STYLES, DRIVETRAINS, TITLE_STATUSES, TRANSMISSIONS, STATUS_LABELS, optionLabel } from "../../../lib/listing-options";
 import { formatMiles, formatPrice, listingTitle, titleText } from "../../../lib/listing-rules";
 import { getOwnListing, getPhotos, isEditable, photoView } from "../../../lib/listings";
-import { markSold, quickEdit, relist, resync } from "../../../lib/seller-actions";
+import { markSold, quickEdit, relist } from "../../../lib/seller-actions";
 import { DELETABLE_STATUSES, deleteListing, takeDownListing } from "../../../lib/take-down";
 import Field from "../../../components/Field.astro";
 import Check from "../../../components/Check.astro";
@@ -32,23 +32,18 @@ if (Astro.request.method === "POST") {
   const intent = posted.intent ?? "";
   if (intent === "quick") {
     const r = await quickEdit(listing, posted);
-    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${r.synced ? "updated=1" : "sync_failed=1"}`, 303);
+    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?updated=1`, 303);
     quickErrors = r.errors ?? {};
     actionError = r.error ?? "";
   }
   if (intent === "sold" || intent === "relist") {
     const r = intent === "sold" ? await markSold(listing) : await relist(listing);
-    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${r.synced ? intent : "sync_failed=1"}`, 303);
-    actionError = r.error ?? "";
-  }
-  if (intent === "resync") {
-    const r = await resync(listing);
-    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${r.synced ? "updated=1" : "sync_failed=1"}`, 303);
+    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${intent}`, 303);
     actionError = r.error ?? "";
   }
   if (intent === "takedown") {
     const r = await takeDownListing(listing, user.id, { by: "seller" });
-    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${r.unpublished ? "taken_down=1" : "taken_down=pending"}`, 303);
+    if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?taken_down=1`, 303);
     actionError = r.error;
   }
   if (intent === "delete") {
@@ -56,7 +51,7 @@ if (Astro.request.method === "POST") {
     if (r.ok) {
       const notice = r.was === "draft" ? "deleted" : r.kept ? "deleted-kept" : "deleted-listing";
       // The delete buttons on /sell send the seller back there.
-      return Astro.redirect(`${url(posted.back === "sell" ? "/sell" : "/")}?notice=${notice}`, 303);
+      return Astro.redirect(`${url(posted.back === "sell" ? "/sell" : GARAGE)}?notice=${notice}`, 303);
     }
     actionError = r.error;
   }
@@ -75,9 +70,9 @@ const photos = await getPhotos(id);
 const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
 const title = listingTitle(listing);
 const editUrl = url(`/listings/${id}/edit`);
-// Only while it is on the site (approved listings already have a slug saved).
+// Only while it is on the Lot (sold cars keep their page).
 const publicUrl =
-  listing.slug && listing.cmsItemId && ["live", "offer_accepted", "sold"].includes(listing.status)
+  listing.slug && ["live", "offer_accepted", "sold"].includes(listing.status)
     ? carUrl(listing.slug)
     : null;
 
@@ -94,11 +89,7 @@ const explain: Record<string, string> = {
   draft: "Only you can see this draft. Finish the steps and submit it for review.",
   submitted: `Our team is reviewing your listing. This usually takes less than a day. ${updatesLine}`,
   changes_requested: "Our reviewer asked for a few changes. Update the listing and submit it again.",
-  // Without the Webflow token nothing publishes until the owner sets it, so
-  // only promise "shortly" when publishing is on.
-  approved: true
-    ? "Approved. It will appear on the Lot shortly."
-    : "Approved. It goes on the Lot as soon as publishing is switched on. Check My garage for updates.",
+  approved: "Approved. Our team is putting it on the Lot now. Check My garage for updates.",
   live: "Your listing is live on Petrol Head Market.",
   offer_accepted: "You accepted an offer. Mark it as sold when the deal is done.",
   sold: "Sold. Congratulations.",
@@ -107,7 +98,6 @@ const explain: Record<string, string> = {
     ? "Our team took this listing off the site. It no longer takes offers or messages."
     : "You took this listing down. It is off the site and no longer takes offers or messages.",
 };
-const inCms = Boolean(listing.cmsItemId) && ["live", "offer_accepted", "sold"].includes(listing.status);
 const canDelete = (DELETABLE_STATUSES as string[]).includes(listing.status);
 const deleteLabel = listing.status === "draft" ? "Delete this draft" : "Delete this listing";
 const deleteConfirm =
@@ -129,26 +119,11 @@ const deleteConfirm =
   {Astro.url.searchParams.get("submitted") && (
     <Notice tone="ok"><p>Submitted for review. {updatesLine}</p></Notice>
   )}
-  {Astro.url.searchParams.get("updated") && <Notice tone="ok"><p>Saved. The public listing is updated.</p></Notice>}
+  {Astro.url.searchParams.get("updated") && <Notice tone="ok"><p>Saved. Your listing on the Lot shows the change now.</p></Notice>}
   {Astro.url.searchParams.get("sold") && <Notice tone="ok"><p>Marked as sold. Congratulations.</p></Notice>}
   {Astro.url.searchParams.get("relist") && <Notice tone="ok"><p>Your car is back on sale.</p></Notice>}
   {Astro.url.searchParams.get("taken_down") && (
-    <Notice tone="ok"><p>
-      {Astro.url.searchParams.get("taken_down") === "pending"
-        ? "Taken down. Open offers were closed. It will be removed from the Lot shortly."
-        : "Taken down. It is off the Lot and open offers were closed."}
-    </p></Notice>
-  )}
-  {inCms && listing.cmsSyncPending ? (
-    <Notice tone="error">
-      <p>{Astro.url.searchParams.get("sync_failed") ? "Saved here, but the public listing did not update yet." : "The public listing is not up to date yet."} The public listing will update shortly, or use Retry update.</p>
-      <form method="post" class="inline-form">
-        <input type="hidden" name="intent" value="resync" />
-        <button class="btn btn--secondary" type="submit">Retry update</button>
-      </form>
-    </Notice>
-  ) : (
-    Astro.url.searchParams.get("sync_failed") && <Notice tone="error"><p>Saved here, but the public listing did not update yet. Try again in a few minutes.</p></Notice>
+    <Notice tone="ok"><p>Taken down. It is off the Lot now and open offers were closed.</p></Notice>
   )}
   {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
 
@@ -419,9 +394,6 @@ const deleteConfirm =
   }
   .danger {
     text-align: center;
-  }
-  .inline-form {
-    margin-top: 10px;
   }
   .linkish {
     border: 0;

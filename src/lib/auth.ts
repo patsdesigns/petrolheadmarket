@@ -24,7 +24,7 @@ function checkName(name: unknown): string {
 }
 
 /**
- * Reset links an admin asked for on /app/admin/users (adminResetLink in
+ * Reset links an admin asked for on /admin/users (adminResetLink in
  * src/lib/admin-users.ts), keyed by a one-time id sent in a header. The
  * header only reaches Better Auth from that server call: the public auth
  * route serves no POSTs and callAuth() never forwards it, and an id that is
@@ -124,9 +124,8 @@ function createAuth() {
       expiresIn: 60 * 60 * 24 * 30,
       updateAge: 60 * 60 * 24,
     },
-    // Off on purpose. Behind Webflow's proxy the visitor IP is often unknown,
-    // which put every visitor in one bucket, and other IP headers can be
-    // spoofed. callAuth() applies the app's own limits (src/lib/auth-limits.ts).
+    // Off on purpose. Better Auth may key by an IP header the client can
+    // spoof, or by no IP at all (every visitor in one bucket). callAuth() applies the app's own limits (src/lib/auth-limits.ts).
     rateLimit: { enabled: false },
     // Better Auth logs failed queries with the whole error, and drizzle puts
     // the bound params (session tokens, emails) in the message. Log only the

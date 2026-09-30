@@ -9,7 +9,7 @@ import { CONTACT_TOPICS, createContactRequest, isContactTopic } from "../lib/con
 
 // Contact the team. Open to everyone, signed in or not (a suspended member
 // or someone locked out of their account needs it too). Messages are stored
-// in D1 and read on /app/admin/contact, so this works with email off.
+// in D1 and read on /admin/contact, so this works with email off.
 const user = Astro.locals.user;
 const profile = Astro.locals.profile;
 const params = Astro.url.searchParams;

@@ -1,8 +1,8 @@
 import type { APIRoute } from "astro";
 import { unreadCount } from "../../lib/messaging";
 
-// Called by the Webflow site header to swap "Sign in" for the account link
-// (and show an unread badge). The middleware skips the unread count for API
+// Signed-in state for scripts that need it: the account link and the unread
+// badge. The middleware skips the unread count for API
 // routes, so it is counted here.
 export const GET: APIRoute = async ({ locals }) => {
   const body = locals.user

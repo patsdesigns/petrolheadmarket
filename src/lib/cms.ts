@@ -7,11 +7,9 @@ import { notifySellerLive } from "./notify";
 import { errorMessage } from "./log";
 
 // Publishing puts an approved listing on the Lot. The Lot and the car pages
-// are this app's own pages (the site moved off Webflow), so publishing is a
-// status change plus a public slug; there is nothing to copy or keep in sync.
-//
-// The sync, unpublish and retry functions below stay as no-ops so the seller,
-// take down and admin code that calls them keeps working unchanged.
+// read listings straight from D1, so publishing is a status change plus a
+// public slug, and every later change (quick edits, sold, take down) shows on
+// the Lot as soon as it is saved. There is nothing to copy or keep in sync.
 
 export function slugify(s: string): string {
   return s
@@ -107,46 +105,3 @@ export async function publishListing(listingId: string, actorId: string | null):
 
 /** Statuses whose listing is on the Lot (sold cars keep their page). */
 export const IN_CMS_STATUSES = ["live", "offer_accepted", "sold"] as const;
-
-/** The car page reads the listing directly, so there is nothing to push. */
-export async function syncListing(listingId: string, _actorId: string | null): Promise<PublishResult> {
-  const listing = await getDb().select({ slug: listings.slug }).from(listings).where(eq(listings.id, listingId)).get();
-  return { ok: true, slug: listing?.slug ?? "" };
-}
-
-/** A taken down listing leaves the Lot by its status alone. */
-export async function unpublishListing(_listingId: string, _actorId: string | null): Promise<{ ok: boolean; error?: string }> {
-  return { ok: true };
-}
-
-export async function resyncListing(_listingId: string, _actorId: string | null): Promise<{ ok: boolean; error?: string }> {
-  return { ok: true };
-}
-
-export async function removeFromCms(_listing: Listing): Promise<{ ok: boolean; error?: string }> {
-  return { ok: true };
-}
-
-/**
- * Publish any listing left `approved` (from before the move, or a publish
- * that failed). Run from the admin pages and the Retry all button.
- */
-export async function retryPendingCms(_opts: { force?: boolean } = {}): Promise<{ published: number; synced: number; failed: number }> {
-  const result = { published: 0, synced: 0, failed: 0 };
-  const approved = await getDb().select({ id: listings.id }).from(listings).where(eq(listings.status, "approved")).limit(20).all();
-  for (const l of approved) {
-    const r = await publishListing(l.id, null);
-    if (r.ok) result.published++;
-    else result.failed++;
-  }
-  return result;
-}
-
-export async function scheduleCmsRetry(): Promise<void> {
-  // Nothing waits on an outside service any more.
-}
-
-/** Nothing can fall out of sync now; kept for the admin queue. */
-export async function pendingCmsListings(): Promise<Listing[]> {
-  return [];
-}

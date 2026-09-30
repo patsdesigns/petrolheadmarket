@@ -22,7 +22,7 @@ export function isContactTopic(value: unknown): value is ContactTopic {
 
 /**
  * Where "contact our team" links go. A mailto to SUPPORT_EMAIL when it is
- * set, otherwise the Contact the team form (/app/contact), which works with
+ * set, otherwise the Contact the team form (/contact), which works with
  * no setup and with email off.
  */
 export function contactHref(topic: ContactTopic, opts: { subject: string; listingId?: string }): string {

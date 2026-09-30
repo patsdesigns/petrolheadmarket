@@ -1,7 +1,7 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 
-// Public photo serving from R2: /app/photos/listings/{listingId}/{photoId}.jpg
+// Public photo serving from R2: /photos/listings/{listingId}/{photoId}.jpg
 const KEY_PATTERN = /^listings\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.jpg$/;
 
 export const GET: APIRoute = async ({ params, request }) => {

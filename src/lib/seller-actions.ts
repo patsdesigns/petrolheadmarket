@@ -2,13 +2,12 @@ import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "../db/client";
 import { listings, offers, profiles, user as users, type Listing } from "../db/schema";
 import { audit } from "./audit";
-import { IN_CMS_STATUSES, syncListing } from "./cms";
 import { sendEmail } from "./email";
 import { FIELD_RULES, formatPrice, listingTitle } from "./listing-rules";
 import { expireStaleOffers, offerPhrase } from "./offers";
 import { safeError } from "./log";
 
-export type ActionResult = { ok: true; synced: boolean } | { ok: false; error?: string; errors?: Record<string, string> };
+export type ActionResult = { ok: true } | { ok: false; error?: string; errors?: Record<string, string> };
 
 /** Fields a seller can change on a live listing. Anything else goes through an admin. */
 export async function quickEdit(listing: Listing, form: Record<string, string>): Promise<ActionResult> {
@@ -32,19 +31,14 @@ export async function quickEdit(listing: Listing, form: Record<string, string>):
     contactPhone: (phone.success ? phone.data : null) as string | null,
   };
   const changed = (Object.keys(next) as (keyof typeof next)[]).filter((k) => next[k] !== listing[k]);
-  if (changed.length === 0) {
-    // Nothing new, but saving again should still fix a site that is behind.
-    if (!listing.cmsItemId || !listing.cmsSyncPending) return { ok: true, synced: true };
-    return { ok: true, synced: (await syncListing(listing.id, listing.userId)).ok };
-  }
+  if (changed.length === 0) return { ok: true };
 
   await getDb()
     .update(listings)
     .set({ ...next, updatedAt: new Date() })
     .where(and(eq(listings.id, listing.id), eq(listings.userId, listing.userId)));
   await audit(listing.userId, "quick_edit", "listing", listing.id, { fields: changed });
-  const sync = await syncListing(listing.id, listing.userId);
-  return { ok: true, synced: sync.ok };
+  return { ok: true };
 }
 
 type OfferRow = { buyerId: string; amount: number; madeBy: string };
@@ -104,8 +98,7 @@ export async function markSold(listing: Listing): Promise<ActionResult> {
   );
 
   await audit(listing.userId, "mark_sold", "listing", listing.id);
-  const sync = await syncListing(listing.id, listing.userId);
-  return { ok: true, synced: sync.ok };
+  return { ok: true };
 }
 
 /** The accepted deal fell through: put the car back on sale. */
@@ -138,15 +131,5 @@ export async function relist(listing: Listing): Promise<ActionResult> {
   );
 
   await audit(listing.userId, "relist", "listing", listing.id);
-  const sync = await syncListing(listing.id, listing.userId);
-  return { ok: true, synced: sync.ok };
-}
-
-/** Retry Webflow after a failed update (Retry update on the listing page). */
-export async function resync(listing: Listing): Promise<ActionResult> {
-  if (!listing.cmsItemId || !(IN_CMS_STATUSES as readonly string[]).includes(listing.status)) {
-    return { ok: false, error: "This listing is not on the site." };
-  }
-  const sync = await syncListing(listing.id, listing.userId);
-  return { ok: true, synced: sync.ok };
+  return { ok: true };
 }

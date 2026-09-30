@@ -1,4 +1,4 @@
-/* Design tokens: the glass design shared with the public Webflow site
+/* Design tokens: the glass design used across the whole site
    (see CLAUDE.md, Design). */
 :root {
   --ink: #15171b;
@@ -146,7 +146,7 @@ a {
 }
 
 /* Layout */
-/* Same frame as the Webflow site: 1180px content, 20px gutters. */
+/* The site frame: 1180px content, 20px gutters. */
 .container {
   width: 100%;
   max-width: calc(var(--max) + 2 * var(--gutter));

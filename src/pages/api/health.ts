@@ -5,8 +5,6 @@ import { env } from "cloudflare:workers";
 // Only reports setting names, never values.
 const REQUIRED = ["BETTER_AUTH_SECRET", "PUBLIC_SITE_URL", "ADMIN_EMAILS"] as const;
 const FOR_EMAIL = ["RESEND_API_KEY", "EMAIL_FROM"] as const;
-// The site and collection IDs have defaults in src/lib/webflow.ts.
-const FOR_PUBLISHING = ["WEBFLOW_API_TOKEN"] as const;
 
 export const GET: APIRoute = async () => {
   const checks: Record<string, "ok" | "missing" | "error"> = {};
@@ -29,7 +27,6 @@ export const GET: APIRoute = async () => {
   const settings = {
     missingRequired: missing(REQUIRED),
     missingForEmail: missing(FOR_EMAIL),
-    missingForPublishing: missing(FOR_PUBLISHING),
   };
 
   const ok = Object.values(checks).every((v) => v === "ok") && settings.missingRequired.length === 0;

@@ -63,7 +63,7 @@ export async function notifySellerRejected(seller: Seller, listingId: string, ti
       notes,
       questionsLine(listingId),
     ],
-    // Through sign in: a signed-out visit to /app goes to the Lot instead.
+    // Through sign in, so a signed-out seller lands on the page after signing in.
     action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(GARAGE))}`) },
   }).catch((err) => console.error("[notify] rejected email failed", listingId, safeError(err)));
 }

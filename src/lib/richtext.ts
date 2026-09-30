@@ -1,5 +1,5 @@
-// Sellers type plain text. These turn it into safe HTML for Webflow rich
-// text fields. Everything is escaped; no user HTML ever passes through.
+// Sellers type plain text. These turn it into safe HTML for the car page's
+// rich text sections. Everything is escaped; no user HTML ever passes through.
 
 export function escapeHtml(s: string): string {
   return s
