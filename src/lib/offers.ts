@@ -9,6 +9,7 @@ import { formatPrice, listingTitle } from "./listing-rules";
 import { url } from "./paths";
 import { isSuspended } from "./profile";
 import { scamCheck } from "./messaging";
+import { safeError } from "./log";
 
 export const OFFER_HOURS = 72;
 export const MIN_OFFER_RATIO = 0.5;
@@ -63,7 +64,7 @@ function noteLines(message: string | null, flagged: boolean): string[] {
 
 function notifyIfWanted(p: { email: string; notify: boolean }, email: Parameters<typeof sendEmail>[0]) {
   if (!p.notify) return Promise.resolve();
-  return sendEmail(email).catch((err) => console.error("[offers] email failed", err));
+  return sendEmail(email).catch((err) => console.error("[offers] email failed", safeError(err)));
 }
 
 export type OfferResult =
@@ -312,7 +313,7 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
         "Stay safe: see the car and the title in person before you pay. Never wire money or pay a deposit to someone you have not met.",
       ],
       action: { label: "See the deal", url: absoluteUrl(url("/offers")) },
-    }).catch((e) => console.error("[offers] accept email failed", e)),
+    }).catch((e) => console.error("[offers] accept email failed", safeError(e))),
     sendEmail({
       to: seller.email,
       subject: `Offer accepted: ${title} for ${formatPrice(offer.amount)}`,
@@ -323,7 +324,7 @@ export async function acceptOffer(offerId: string, actorId: string): Promise<Off
       ],
       // Through sign in: a signed-out visit to /app goes to the Lot instead.
       action: { label: "Open My garage", url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url("/"))}`) },
-    }).catch((e) => console.error("[offers] accept email failed", e)),
+    }).catch((e) => console.error("[offers] accept email failed", safeError(e))),
   ]);
 
   // Everyone else with an open offer is told the car is under offer.

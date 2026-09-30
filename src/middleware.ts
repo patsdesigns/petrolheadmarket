@@ -7,6 +7,7 @@ import { basePath, siteUrl, url } from "./lib/paths";
 import { safeNext } from "./lib/forms";
 import { unreadCount } from "./lib/messaging";
 import { adminCounts, NO_ADMIN_COUNTS } from "./lib/admin-counts";
+import { safeError } from "./lib/log";
 
 // Paths (relative to /app) anyone can open without signing in.
 const PUBLIC_PREFIXES = [
@@ -140,7 +141,7 @@ const handle = async (context: APIContext, next: MiddlewareNext): Promise<Respon
     // treat the visitor as signed out rather than failing every page.
     const result = await (async () =>
       getAuth().api.getSession({ headers: request.headers, returnHeaders: true }))().catch((err) => {
-      console.error("[auth] session lookup failed", err);
+      console.error("[auth] session lookup failed", safeError(err));
       return null;
     });
     authCookies = result?.headers?.getSetCookie?.() ?? [];

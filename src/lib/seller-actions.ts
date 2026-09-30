@@ -6,6 +6,7 @@ import { IN_CMS_STATUSES, syncListing } from "./cms";
 import { sendEmail } from "./email";
 import { FIELD_RULES, formatPrice, listingTitle } from "./listing-rules";
 import { expireStaleOffers, offerPhrase } from "./offers";
+import { safeError } from "./log";
 
 export type ActionResult = { ok: true; synced: boolean } | { ok: false; error?: string; errors?: Record<string, string> };
 
@@ -68,7 +69,7 @@ async function emailBuyers(
       if (profile?.emailNotifications === false) continue;
     }
     await sendEmail({ to: buyer.email, subject, paragraphs: lines(o) }).catch((e) =>
-      console.error("[seller] email failed", e),
+      console.error("[seller] email failed", safeError(e)),
     );
   }
 }

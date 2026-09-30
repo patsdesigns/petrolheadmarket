@@ -42,6 +42,21 @@ const RULES: Record<LimitAction, { email: Rule; ip: Rule }> = {
 
 interface Bucket extends Rule {
   key: string;
+  /** The site-wide sign up backstop (see signupHourlyMax). */
+  global?: boolean;
+}
+
+/**
+ * Sign ups for the whole site per hour, whatever the address or IP. The IP
+ * is often unknown behind Webflow's proxy, and while email is off a new
+ * account can offer and message at once, so without this one script could
+ * make any number of throwaway accounts, each with a fresh offer and message
+ * allowance. SIGNUP_HOURLY_MAX overrides the default of 30. Read env inside
+ * the function, never at module scope.
+ */
+export function signupHourlyMax(): number {
+  const n = Number.parseInt(env.SIGNUP_HOURLY_MAX ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : 30;
 }
 
 async function sha256(value: string): Promise<string> {
@@ -176,6 +191,7 @@ async function bucketsFor(request: Request, action: LimitAction, emails: (string
   }
   const ip = clientIp(request);
   if (ip) buckets.push({ key: `${action}:ip:${await sha256(ip)}`, ...rules.ip });
+  if (action === "signup") buckets.push({ key: "signup:global", max: signupHourlyMax(), windowSec: 3600, global: true });
   return buckets;
 }
 
@@ -184,10 +200,11 @@ async function bucketsFor(request: Request, action: LimitAction, emails: (string
  * the new count. Returns the seconds to wait (0 when every bucket is still
  * within its limit).
  */
-async function take(buckets: Bucket[]): Promise<number> {
+async function take(buckets: Bucket[]): Promise<{ wait: number; busy: boolean }> {
   const db = getDb();
   const now = Date.now();
   let wait = 0;
+  let busy = false;
   for (const b of buckets) {
     const expired = now - b.windowSec * 1000;
     const row = await db
@@ -204,13 +221,14 @@ async function take(buckets: Bucket[]): Promise<number> {
       .get();
     if (row && row.count > b.max) {
       wait = Math.max(wait, Math.ceil((row.windowStart + b.windowSec * 1000 - now) / 1000));
+      if (b.global) busy = true;
     }
   }
   // Now and then, clear counters older than a day so the table stays small.
   if (Math.random() < 0.02) {
     await db.delete(authLimits).where(lt(authLimits.windowStart, now - 24 * 60 * 60 * 1000));
   }
-  return wait;
+  return { wait, busy };
 }
 
 /** Give back the slot taken for an attempt that does not count. */
@@ -225,6 +243,8 @@ async function release(buckets: Bucket[]): Promise<void> {
 export interface Limiter {
   /** Seconds to wait before trying again, 0 when allowed. */
   wait: number;
+  /** True when the site-wide sign up limit (not this person's own) was hit. */
+  busy: boolean;
   /** Give the slot back (the attempt was refused, or it succeeded and only failures count). */
   release: () => Promise<void>;
 }
@@ -237,11 +257,14 @@ export interface Limiter {
  */
 export async function takeAuthLimit(request: Request, action: LimitAction, emails: (string | null)[]): Promise<Limiter> {
   const buckets = await bucketsFor(request, action, emails);
-  const wait = await take(buckets);
-  const limiter = { wait, release: () => release(buckets) };
+  const { wait, busy } = await take(buckets);
+  const limiter = { wait, busy, release: () => release(buckets) };
   if (wait > 0) await limiter.release().catch(() => undefined);
   return limiter;
 }
+
+/** For the site-wide sign up limit. */
+export const SIGNUPS_BUSY_MESSAGE = "We are getting a lot of new accounts right now. Please try again in an hour.";
 
 /** "Too many attempts. Wait 10 minutes and try again." */
 export function tooManyMessage(waitSec: number): string {

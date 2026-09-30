@@ -11,6 +11,7 @@ import { formatPrice, listingTitle } from "./listing-rules";
 import { getOwnListing, getPhotos } from "./listings";
 import { offerPhrase } from "./offers";
 import { url } from "./paths";
+import { safeError } from "./log";
 
 /** Sellers take down their own live listing; admins any listing that is on the site. */
 const SELLER_FROM: ListingStatus[] = ["live"];
@@ -59,7 +60,7 @@ export async function closeOffersOnTakeDown(listing: Listing, now = new Date()):
           : `The ${title} was taken off Petrol Head Market, so ${offerPhrase(o)} was closed.`,
         "Never send money for a car you have not seen in person. There are more great cars on the site.",
       ],
-    }).catch((err) => console.error("[take-down] buyer email failed", err));
+    }).catch((err) => console.error("[take-down] buyer email failed", safeError(err)));
   }
 }
 
@@ -120,7 +121,7 @@ export async function takeDownListing(
           label: "Open the listing",
           url: absoluteUrl(`${url("/login")}?next=${encodeURIComponent(url(`/listings/${listing.id}`))}`),
         },
-      }).catch((err) => console.error("[take-down] seller email failed", err));
+      }).catch((err) => console.error("[take-down] seller email failed", safeError(err)));
     }
   }
 

@@ -9,6 +9,7 @@ import { sendEmail } from "./email";
 import { ensureProfile, roleFor } from "./profile";
 import { IP_HEADERS, publicOrigin } from "./config";
 import { url } from "./paths";
+import { errorMessage, safeError } from "./log";
 
 /**
  * Names come only from our own forms, but check them here too so no path
@@ -127,6 +128,18 @@ function createAuth() {
     // which put every visitor in one bucket, and other IP headers can be
     // spoofed. callAuth() applies the app's own limits (src/lib/auth-limits.ts).
     rateLimit: { enabled: false },
+    // Better Auth logs failed queries with the whole error, and drizzle puts
+    // the bound params (session tokens, emails) in the message. Log only the
+    // redacted names and messages (src/lib/log.ts).
+    logger: {
+      level: "warn",
+      log: (level, message, ...args) => {
+        const line = [`[better-auth] ${errorMessage(String(message))}`, ...args.map((a) => safeError(a))].join(" ");
+        if (level === "error") console.error(line);
+        else if (level === "warn") console.warn(line);
+        else console.log(line);
+      },
+    },
     advanced: {
       cookiePrefix: "phm",
       // Only Cloudflare's own header, which the client cannot set. Used for

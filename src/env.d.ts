@@ -14,6 +14,8 @@ declare namespace Cloudflare {
     ADMIN_EMAILS?: string;
     /** Public contact address for mailto links and reply_to. Not a sign in address. */
     SUPPORT_EMAIL?: string;
+    /** Sign ups allowed per hour for the whole site (default 30). */
+    SIGNUP_HOURLY_MAX?: string;
     PUBLIC_SITE_URL?: string;
     /** Local tests only: point the Webflow and Resend clients at fake APIs. */
     WEBFLOW_API_BASE?: string;

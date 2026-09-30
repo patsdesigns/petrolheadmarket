@@ -6,6 +6,7 @@ import { sendEmail } from "./email";
 import { takeAuthLimit, tooManyMessage } from "./auth-limits";
 import { audit } from "./audit";
 import { url } from "./paths";
+import { safeError } from "./log";
 
 export const CONTACT_TOPICS = {
   listing: "A change to my listing",
@@ -62,7 +63,7 @@ export async function createContactRequest(request: Request, input: ContactInput
     const limit = await takeAuthLimit(request, "contact", [input.email]);
     if (limit.wait > 0) return { ok: false, error: tooManyMessage(limit.wait) };
   } catch (err) {
-    console.error("[contact] rate limit lookup failed", err);
+    console.error("[contact] rate limit lookup failed", safeError(err));
   }
   const db = getDb();
   // A backstop for a flood from many addresses (the IP is often unknown).
@@ -92,7 +93,7 @@ export async function createContactRequest(request: Request, input: ContactInput
         subject: "New message for the team",
         paragraphs: [`A member wrote to the team about: ${CONTACT_TOPICS[input.topic].toLowerCase()}.`],
         action: { label: "Read it", url: link },
-      }).catch((err) => console.error("[contact] admin email failed", err)),
+      }).catch((err) => console.error("[contact] admin email failed", safeError(err))),
     ),
   );
   return { ok: true };

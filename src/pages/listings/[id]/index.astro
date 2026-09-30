@@ -14,6 +14,7 @@ import Field from "../../../components/Field.astro";
 import Check from "../../../components/Check.astro";
 import { emailConfigured, supportEmail } from "../../../lib/config";
 import { contactHref } from "../../../lib/contact";
+import { webflowConfigured } from "../../../lib/webflow";
 
 const user = Astro.locals.user!;
 const id = Astro.params.id!;
@@ -94,7 +95,11 @@ const explain: Record<string, string> = {
   draft: "Only you can see this draft. Finish the steps and submit it for review.",
   submitted: `Our team is reviewing your listing. This usually takes less than a day. ${updatesLine}`,
   changes_requested: "Our reviewer asked for a few changes. Update the listing and submit it again.",
-  approved: "Approved. It will appear on the Lot shortly.",
+  // Without the Webflow token nothing publishes until the owner sets it, so
+  // only promise "shortly" when publishing is on.
+  approved: webflowConfigured()
+    ? "Approved. It will appear on the Lot shortly."
+    : "Approved. It goes on the Lot as soon as publishing is switched on. Check My garage for updates.",
   live: "Your listing is live on Petrol Head Market.",
   offer_accepted: "You accepted an offer. Mark it as sold when the deal is done.",
   sold: "Sold. Congratulations.",

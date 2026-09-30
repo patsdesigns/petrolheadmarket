@@ -7,6 +7,7 @@ import { closeOffersOnTakeDown } from "./take-down";
 import { isAdminEmail, publicOrigin } from "./config";
 import { getAuth, RESET_CAPTURE_HEADER, resetCaptures } from "./auth";
 import { url } from "./paths";
+import { roleFor } from "./profile";
 
 /** Listings that are on the site or on their way there. Suspending takes them down. */
 const TAKE_DOWN_STATUSES = ["submitted", "approved", "live", "offer_accepted"] as const;
@@ -90,15 +91,19 @@ async function target(userId: string) {
 /**
  * Suspend an account: sign it out everywhere, take down its listings, close
  * its open offers, hide its unread flagged messages and mark its flagged
- * messages reviewed. Admins (anyone in
- * ADMIN_EMAILS) can't be suspended, and nor can the acting admin.
+ * messages reviewed. Admins can't be suspended, and nor can the acting
+ * admin. The check is on the role, not the address: someone who signed up
+ * first with an ADMIN_EMAILS address they can't confirm is not an admin and
+ * can be suspended. When the owner later takes the address back with the
+ * Site owner reset, the confirmed account becomes an admin and ensureProfile
+ * clears the suspension.
  */
 export async function suspendUser(adminId: string, userId: string): Promise<AdminResult> {
   const db = getDb();
   const u = await target(userId);
   if (!u) return { ok: false, error: "That account no longer exists." };
   if (u.id === adminId) return { ok: false, error: "You can't suspend your own account." };
-  if (isAdminEmail(u.email)) return { ok: false, error: "Admin accounts can't be suspended. Remove the address from ADMIN_EMAILS first." };
+  if (roleFor(u) === "admin") return { ok: false, error: "Admin accounts can't be suspended." };
 
   const now = new Date();
   const done = await db

@@ -20,6 +20,7 @@ import {
   webflowConfigured,
   WebflowError,
 } from "./webflow";
+import { errorMessage, safeError } from "./log";
 
 const GALLERY_LIMIT = 25; // Webflow MultiImage limit
 
@@ -267,7 +268,7 @@ export async function publishListing(listingId: string, actorId: string | null):
     return { ok: true, slug };
   } catch (err) {
     await db.update(listings).set({ publishingAt: null, cmsAttemptedAt: new Date() }).where(eq(listings.id, listing.id));
-    const error = err instanceof Error ? err.message : String(err);
+    const error = errorMessage(err);
     console.error("[cms] publish failed", listing.id, error);
     await auditFailure(actorId, "cms_publish_failed", listing.id, {
       error,
@@ -338,7 +339,7 @@ export async function syncListing(listingId: string, actorId: string | null): Pr
     await audit(actorId, "cms_sync", "listing", listing.id, { status: listing.status });
     return { ok: true, slug: listing.slug };
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
+    const error = errorMessage(err);
     console.error("[cms] sync failed", listing.id, error);
     await markPending(listing.id, true);
     await auditFailure(actorId, "cms_sync_failed", listing.id, { error });
@@ -361,7 +362,7 @@ export async function unpublishListing(listingId: string, actorId: string | null
     await audit(actorId, "cms_unpublish", "listing", listing.id, { cmsItemId: listing.cmsItemId });
     return { ok: true };
   } catch (err) {
-    const error = err instanceof Error ? err.message : String(err);
+    const error = errorMessage(err);
     console.error("[cms] unpublish failed", listing.id, error);
     await markPending(listing.id, true);
     await auditFailure(actorId, "cms_unpublish_failed", listing.id, { error });
@@ -394,7 +395,7 @@ export async function removeFromCms(listing: Listing): Promise<{ ok: boolean; er
     await deleteItem(listing.cmsItemId);
   } catch (err) {
     // The item is already off the live site; a leftover staged copy is harmless.
-    console.error("[cms] delete item failed", listing.id, err instanceof Error ? err.message : String(err));
+    console.error("[cms] delete item failed", listing.id, errorMessage(err));
   }
   return { ok: true };
 }
@@ -464,7 +465,7 @@ export async function scheduleCmsRetry(): Promise<void> {
   if (!webflowConfigured()) return;
   const job = retryPendingCms().then(
     () => undefined,
-    (err) => console.error("[cms] lazy retry failed", err),
+    (err) => console.error("[cms] lazy retry failed", safeError(err)),
   );
   try {
     waitUntil(job);

@@ -31,7 +31,7 @@ if (Astro.request.method === "POST") {
 
 const rows = await searchUsers(q);
 const fmtDate = (d: Date | null) =>
-  d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "";
+  d ? d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/Los_Angeles" }) : "";
 ---
 
 <Base title="Users">
@@ -89,12 +89,21 @@ const fmtDate = (d: Date | null) =>
         <tbody>
           {rows.map((r) => {
             const adminAddress = isAdminEmail(r.email);
-            const canSuspend = !adminAddress && r.id !== admin.id && r.role !== "admin";
+            // On role, not address: an unconfirmed account on an admin address
+            // is not an admin (someone else may have signed up with it first).
+            const confirmedAdmin = adminAddress && r.emailVerified;
+            const canSuspend = !confirmedAdmin && r.id !== admin.id && r.role !== "admin";
             return (
               <tr>
                 <td>
                   <strong>{r.name}</strong>
                   {r.displayName && r.displayName !== r.name && <span class="sub">Shows as {r.displayName}</span>}
+                  {adminAddress && !r.emailVerified && (
+                    <span class="sub">
+                      Owner address, not confirmed. Not an admin. The owner takes it back with Site owner on the password
+                      reset page.
+                    </span>
+                  )}
                 </td>
                 <td data-label="Email" class="email">{r.email}</td>
                 <td data-label="Status">

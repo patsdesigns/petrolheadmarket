@@ -1,7 +1,8 @@
 import { getAuth } from "./auth";
-import { deviceCookie, takeAuthLimit, tooManyMessage, type Limiter, type LimitAction } from "./auth-limits";
+import { deviceCookie, SIGNUPS_BUSY_MESSAGE, takeAuthLimit, tooManyMessage, type Limiter, type LimitAction } from "./auth-limits";
 import { IP_HEADERS, publicOrigin } from "./config";
 import { url } from "./paths";
+import { safeError } from "./log";
 
 export interface AuthCallResult<T = unknown> {
   ok: boolean;
@@ -32,12 +33,12 @@ const LIMITED: Record<string, { action: LimitAction; failuresOnly?: boolean; sil
   "/change-email": { action: "email" },
 };
 
-function tooMany<T>(waitSec: number): AuthCallResult<T> {
+function tooMany<T>(waitSec: number, busy = false): AuthCallResult<T> {
   return {
     ok: false,
     status: 429,
     data: null,
-    error: tooManyMessage(waitSec),
+    error: busy ? SIGNUPS_BUSY_MESSAGE : tooManyMessage(waitSec),
     code: "TOO_MANY_REQUESTS",
     cookies: [],
   };
@@ -73,11 +74,11 @@ export async function callAuth<T = unknown>(
       limiter = await takeAuthLimit(request, limit.action, [email, limitEmail ?? null]);
     } catch (err) {
       // A missing table or D1 hiccup must not lock everyone out.
-      console.error("[auth] rate limit lookup failed", err);
+      console.error("[auth] rate limit lookup failed", safeError(err));
     }
     if (limiter && limiter.wait > 0) {
       if (limit.silent) return { ok: true, status: 200, data: null, error: null, code: null, cookies: [] };
-      return tooMany<T>(limiter.wait);
+      return tooMany<T>(limiter.wait, limiter.busy);
     }
   }
 
@@ -99,7 +100,7 @@ export async function callAuth<T = unknown>(
     );
   } catch (err) {
     // Usually a missing setting such as BETTER_AUTH_SECRET. See /app/api/health.
-    console.error("[auth] handler failed", err);
+    console.error("[auth] handler failed", safeError(err));
     if (limiter && limit?.failuresOnly) await limiter.release().catch(() => undefined);
     return {
       ok: false,

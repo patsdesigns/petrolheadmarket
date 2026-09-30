@@ -20,7 +20,7 @@ if (Astro.request.method === "POST") {
 const open = await openContactRequests();
 const handled = await handledContactRequests();
 const fmt = (d: Date) =>
-  d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+  d.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "America/Los_Angeles" });
 const replyHref = (email: string, topic: keyof typeof CONTACT_TOPICS) =>
   `mailto:${email}?subject=${encodeURIComponent(`Re: ${CONTACT_TOPICS[topic]}`)}`;
 ---

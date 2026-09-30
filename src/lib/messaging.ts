@@ -7,6 +7,7 @@ import { listingTitle } from "./listing-rules";
 import { url } from "./paths";
 import { messageRateLimited } from "./rate-limit";
 import { isSuspended } from "./profile";
+import { safeError } from "./log";
 
 export const MAX_MESSAGE = 2000;
 
@@ -215,7 +216,7 @@ export async function sendMessage(opts: {
         subject: `New message about the ${listingTitle(listing)}`,
         paragraphs: [...lines, "Reply on Petrol Head Market. Your email address stays private."],
         action: { label: "Read and reply", url: absoluteUrl(url(`/inbox/${thread.id}`)) },
-      }).catch((err) => console.error("[messages] email failed", err));
+      }).catch((err) => console.error("[messages] email failed", safeError(err)));
     }
   }
 
