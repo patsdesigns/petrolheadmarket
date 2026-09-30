@@ -1,9 +1,10 @@
 ---
 // Year, make and model as dropdowns for the sell wizard. Each has an "Other"
 // choice that shows a text box (CSS :has, so it works without JavaScript).
-// A small script refills the model list when the make changes; without it
-// the seller can still pick Other and type the model.
-import { FIRST_LISTED_YEAR, MAKES, MAKE_NAMES, OTHER, modelsFor, yearOptions } from "../lib/car-catalog";
+// Makes and models are filtered to the chosen year (a 1993 Porsche offers no
+// Cayenne), and models to the chosen make. The server renders the lists for
+// the saved values; a small script refills them when the year or make changes.
+import { FIRST_LISTED_YEAR, MAKE_NAMES, OTHER, catalogForClient, makesFor, modelsFor, yearOptions } from "../lib/car-catalog";
 
 interface Props {
   year: string;
@@ -15,8 +16,15 @@ const { year, make, model, errors } = Astro.props;
 
 const years = yearOptions();
 const yearPick = !year ? "" : years.includes(year) ? year : OTHER;
-const makePick = !make ? "" : MAKE_NAMES.includes(make) ? make : OTHER;
-const models = makePick === OTHER ? [] : modelsFor(make);
+
+// A saved make or model that the year filter would hide stays in its list,
+// so opening the wizard never silently drops what the seller chose.
+const makes = makesFor(year);
+if (make && MAKE_NAMES.includes(make) && !makes.includes(make)) makes.push(make);
+const makePick = !make ? "" : makes.includes(make) ? make : OTHER;
+
+const models = makePick === OTHER ? [] : modelsFor(make, year);
+if (model && makePick !== OTHER && modelsFor(make).includes(model) && !models.includes(model)) models.push(model);
 const modelPick = !model ? "" : models.includes(model) ? model : OTHER;
 
 const fields = [
@@ -31,7 +39,7 @@ const fields = [
     inputmode: "numeric",
     maxlength: 4,
   },
-  { name: "make", label: "Make", pick: makePick, options: MAKE_NAMES, other: makePick === OTHER ? make : "", otherLabel: "Type the make", otherOption: "Other make", maxlength: 40 },
+  { name: "make", label: "Make", pick: makePick, options: makes, other: makePick === OTHER ? make : "", otherLabel: "Type the make", otherOption: "Other make", maxlength: 40 },
   { name: "model", label: "Model", pick: modelPick, options: models, other: modelPick === OTHER ? model : "", otherLabel: "Type the model", otherOption: "Other model", maxlength: 60 },
 ] as const;
 ---
@@ -68,7 +76,7 @@ const fields = [
     })
   }
 </div>
-<script type="application/json" id="car-catalog" set:html={JSON.stringify(MAKES).replace(/</g, "\\u003c")} />
+<script type="application/json" id="car-catalog" set:html={JSON.stringify(catalogForClient()).replace(/</g, "\\u003c")} />
 
 <style>
   .car-pick {
@@ -85,26 +93,55 @@ const fields = [
 </style>
 
 <script>
+  type Range = [number, number | null];
+  const OTHER = "__other";
+  const FIRST = 1920;
   const root = document.querySelector<HTMLElement>("[data-car-picker]");
-  const catalog = JSON.parse(document.getElementById("car-catalog")?.textContent || "{}") as Record<string, string[]>;
+  const catalog = JSON.parse(document.getElementById("car-catalog")?.textContent || "{}") as Record<string, [string, Range[]][]>;
+  const year = root?.querySelector<HTMLSelectElement>("#f-year");
   const make = root?.querySelector<HTMLSelectElement>("#f-make");
   const model = root?.querySelector<HTMLSelectElement>("#f-model");
 
-  // Refill the model list for the chosen make, keeping Choose one and Other.
-  make?.addEventListener("change", () => {
-    if (!model) return;
-    const first = model.options[0];
-    const other = model.options[model.options.length - 1];
-    model.replaceChildren(first, ...(catalog[make.value] ?? []).map((m) => new Option(m, m)), other);
-    // A make with no list (Other) goes straight to typing the model.
-    model.value = make.value === "__other" ? "__other" : "";
-    model.dispatchEvent(new Event("change", { bubbles: true }));
+  /** The chosen year when it is one of the listed years, else no filter. */
+  function chosenYear(): number | null {
+    const y = Number(year?.value);
+    return Number.isInteger(y) && y >= FIRST ? y : null;
+  }
+  const builtIn = (ranges: Range[], y: number | null) => !y || ranges.some(([a, b]) => y >= a && y <= (b ?? 9999));
+
+  /** Refill a select between Choose one and Other, keeping the pick when it is still offered. */
+  function refill(sel: HTMLSelectElement, names: string[]) {
+    const keep = sel.value;
+    const first = sel.options[0];
+    const other = sel.options[sel.options.length - 1];
+    sel.replaceChildren(first, ...names.map((n) => new Option(n, n)), other);
+    sel.value = keep === OTHER || names.includes(keep) ? keep : "";
+  }
+
+  function refillModels() {
+    if (!make || !model) return;
+    if (make.value === OTHER) {
+      // A make with no list goes straight to typing the model.
+      refill(model, []);
+      model.value = OTHER;
+      return;
+    }
+    const y = chosenYear();
+    refill(model, (catalog[make.value] ?? []).filter(([, r]) => builtIn(r, y)).map(([n]) => n));
+  }
+
+  year?.addEventListener("change", () => {
+    if (!make) return;
+    const y = chosenYear();
+    refill(make, Object.keys(catalog).filter((m) => catalog[m].some(([, r]) => builtIn(r, y))));
+    refillModels();
   });
+  make?.addEventListener("change", refillModels);
 
   // Picking Other moves the cursor into its text box.
   root?.querySelectorAll<HTMLSelectElement>("select").forEach((sel) =>
     sel.addEventListener("change", (e) => {
-      if (sel.value === "__other" && e.isTrusted) document.getElementById(`${sel.id}_other`)?.focus();
+      if (sel.value === OTHER && e.isTrusted) document.getElementById(`${sel.id}_other`)?.focus();
     }),
   );
 </script>
