@@ -552,7 +552,7 @@
     width: auto;
     max-height: 82vh;
     overflow-y: auto;
-    padding: 18px 18px calc(16px + env(safe-area-inset-bottom));
+    padding: 18px 18px 0;
     border-radius: 22px 22px 0 0;
     background: rgba(255, 255, 255, 0.96);
   }
@@ -569,6 +569,10 @@
   .more__foot {
     position: sticky;
     bottom: 0;
+    margin: 8px -18px 0;
+    padding: 14px 18px calc(16px + env(safe-area-inset-bottom));
+    background: var(--white);
+    box-shadow: 0 -8px 16px rgba(255, 255, 255, 0.9);
   }
   .more__foot .btn {
     flex: 1;
