@@ -14,8 +14,8 @@ if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
 
 const PER_PAGE = 50;
 const rawQ = (Astro.url.searchParams.get("q") ?? "").trim().slice(0, 200);
-// A pasted public link (…/listings/{slug}) searches for that slug.
-const fromUrl = /\/listings\/([a-z0-9-]+)\/?(?:[?#].*)?$/i.exec(rawQ)?.[1];
+// A pasted public link (…/cars/{slug}, or an old …/listings/{slug}) searches for that slug.
+const fromUrl = /\/(?:cars|listings)\/([a-z0-9-]+)\/?(?:[?#].*)?$/i.exec(rawQ)?.[1];
 const q = (fromUrl ?? rawQ).slice(0, 100);
 const page = Math.min(Math.max(1, Math.floor(Number(Astro.url.searchParams.get("page")) || 1)), 1000);
 const statusParam = Astro.url.searchParams.get("status") ?? "";
