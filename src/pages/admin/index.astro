@@ -10,12 +10,11 @@ import { formatPrice, listingTitle } from "../../lib/listing-rules";
 import Notice from "../../components/Notice.astro";
 import { emailConfigured } from "../../lib/config";
 import { pendingCmsListings, retryPendingCms } from "../../lib/cms";
-import { NOT_CONFIGURED_MESSAGE, webflowConfigured } from "../../lib/webflow";
 
 // Middleware already limits /app/admin to admins; check again here.
 if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
 
-const cmsConfigured = webflowConfigured();
+const cmsConfigured = true;
 let retryNotice = "";
 
 if (Astro.request.method === "POST") {
@@ -29,7 +28,7 @@ if (Astro.request.method === "POST") {
 }
 
 const retried = Astro.url.searchParams.get("retried");
-if (retried === "off") retryNotice = NOT_CONFIGURED_MESSAGE;
+if (retried === "off") retryNotice = "Publishing is not available.";
 else if (retried) {
   const [published, synced, failed] = retried.split(".").map((n) => Number(n) || 0);
   const parts = [];
@@ -109,7 +108,7 @@ const waited = (d: Date | null) => {
         <p class="muted">
           {cmsConfigured
             ? "Publishing to Webflow failed or is still running. These are retried about once a minute while you use the admin pages. Open one to see the error."
-            : NOT_CONFIGURED_MESSAGE}
+            : "Publishing is not available."}
         </p>
         <ul class="rows">
           {stuck.map((r) => (

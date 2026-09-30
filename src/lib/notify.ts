@@ -1,7 +1,7 @@
-import { adminEmails, absoluteUrl, publicOrigin } from "./config";
+import { adminEmails, absoluteUrl } from "./config";
 import { questionsLine } from "./contact";
 import { sendEmail } from "./email";
-import { url, GARAGE } from "./paths";
+import { url, carUrl, GARAGE } from "./paths";
 import { safeError } from "./log";
 
 /** Tell the review team a listing is waiting. Failures are logged, not thrown. */
@@ -37,7 +37,7 @@ export async function notifySellerLive(seller: Seller, listingId: string, title:
         ? "Buyers' messages and offers show up in your inbox and on the Offers page. You can change the price, offers and contact settings any time from My garage."
         : "We will email you when a buyer sends a message or an offer. You can change the price, offers and contact settings any time from My garage.",
     ],
-    action: { label: "See your listing", url: `${publicOrigin()}/listings/${slug}` },
+    action: { label: "See your listing", url: absoluteUrl(carUrl(slug)) },
   }).catch((err) => console.error("[notify] live email failed", listingId, safeError(err)));
 }
 

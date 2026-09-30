@@ -23,7 +23,6 @@ import { STATUS_LABELS } from "../../../lib/listing-options";
 import { checklist, listingTitle, parseStep, type ListingField } from "../../../lib/listing-rules";
 import { getPhotos, photoView } from "../../../lib/listings";
 import { publishListing, resyncListing, scheduleCmsRetry, syncListing, type PublishResult } from "../../../lib/cms";
-import { NOT_CONFIGURED_MESSAGE, webflowConfigured } from "../../../lib/webflow";
 import { takeDownListing } from "../../../lib/take-down";
 import { audit, auditFor } from "../../../lib/audit";
 import { notifySellerChanges, notifySellerRejected } from "../../../lib/notify";
@@ -41,7 +40,7 @@ if (!listing || listing.status === "draft") return Astro.rewrite(url("/404"));
 
 const IN_CMS = ["live", "offer_accepted", "sold"];
 const selfUrl = url(`/admin/listings/${id}`);
-const cmsConfigured = webflowConfigured();
+const cmsConfigured = true;
 
 // An approved listing that is not in the CMS yet (and not mid publish) can
 // still be sent back, rejected or moved back to review.
@@ -130,7 +129,7 @@ if (Astro.request.method === "POST") {
     }
   } else if (intent === "retry") {
     if (listing.status !== "approved") actionError = "Only approved listings can be retried.";
-    else if (!cmsConfigured) actionError = NOT_CONFIGURED_MESSAGE;
+    else if (!cmsConfigured) actionError = "Publishing is not available.";
     else return publishRedirect(await publishListing(id, admin.id));
   } else if (intent === "unapprove") {
     const moved = await db
@@ -290,7 +289,7 @@ const fmtDate = (d: Date | null | undefined) =>
           : "Everything else was saved."}
     </p></Notice>
   )}
-  {!cmsConfigured && <Notice tone="info"><p>{NOT_CONFIGURED_MESSAGE}</p></Notice>}
+  {!cmsConfigured && <Notice tone="info"><p>{"Publishing is not available."}</p></Notice>}
 
   <div class="layout">
     <div class="main">

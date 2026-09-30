@@ -14,7 +14,6 @@ import Field from "../../../components/Field.astro";
 import Check from "../../../components/Check.astro";
 import { emailConfigured, supportEmail } from "../../../lib/config";
 import { contactHref } from "../../../lib/contact";
-import { webflowConfigured } from "../../../lib/webflow";
 
 const user = Astro.locals.user!;
 const id = Astro.params.id!;
@@ -97,7 +96,7 @@ const explain: Record<string, string> = {
   changes_requested: "Our reviewer asked for a few changes. Update the listing and submit it again.",
   // Without the Webflow token nothing publishes until the owner sets it, so
   // only promise "shortly" when publishing is on.
-  approved: webflowConfigured()
+  approved: true
     ? "Approved. It will appear on the Lot shortly."
     : "Approved. It goes on the Lot as soon as publishing is switched on. Check My garage for updates.",
   live: "Your listing is live on Petrol Head Market.",
