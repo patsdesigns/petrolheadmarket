@@ -1,5 +1,5 @@
 import { and, asc, count, eq, inArray, isNull, sql } from "drizzle-orm";
-import { getDb } from "../db/client";
+import { chunks, getDb } from "../db/client";
 import { listingPhotos, listings } from "../db/schema";
 import { BODY_STYLES, DRIVETRAINS, TRANSMISSIONS } from "./listing-options";
 import { photoUrl } from "./paths";
@@ -14,7 +14,7 @@ import { photoUrl } from "./paths";
 export const LOT_STATUSES = ["live", "offer_accepted"] as const;
 export const PER_PAGE = 24;
 
-/** Exterior color families for the Ext. Color filter. Sellers type the
+/** Exterior color families for the Exterior color filter in More filters. Sellers type the
  * color freely ("Guards Red", "Light Ivory"), so a car joins the first
  * family with a word in its color; anything else is Other. */
 export const COLORS = [
@@ -87,7 +87,7 @@ export interface LotQuery {
   make: string;
   model: string;
   trim: string;
-  color: string;
+  color: string[];
   pmin: number | null;
   pmax: number | null;
   mmin: number | null;
@@ -127,7 +127,6 @@ export function parseLotQuery(params: URLSearchParams): LotQuery {
   if (pmin !== null && pmax !== null && pmin > pmax) [pmin, pmax] = [pmax, pmin];
   let [mmin, mmax] = [amount("miles_min"), amount("miles_max")];
   if (mmin !== null && mmax !== null && mmin > mmax) [mmin, mmax] = [mmax, mmin];
-  const color = params.get("color") ?? "";
   return {
     q: text("q", 80),
     ymin,
@@ -137,7 +136,7 @@ export function parseLotQuery(params: URLSearchParams): LotQuery {
     model: make ? text("model", 60) : "",
     // A trim only means something with its model.
     trim: make && params.get("model") ? text("trim", 40) : "",
-    color: COLORS.some((c) => c.value === color) ? color : "",
+    color: pick(list("color"), COLORS),
     pmin,
     pmax,
     mmin,
@@ -162,13 +161,12 @@ export function lotHref(q: LotQuery, change: Partial<LotQuery> = {}): string {
   if (s.make) p.set("make", s.make);
   if (s.make && s.model) p.set("model", s.model);
   if (s.make && s.model && s.trim) p.set("trim", s.trim);
-  if (s.color) p.set("color", s.color);
   if (s.pmin !== null) p.set("price_min", String(s.pmin));
   if (s.pmax !== null) p.set("price_max", String(s.pmax));
   if (s.mmin !== null) p.set("miles_min", String(s.mmin));
   if (s.mmax !== null) p.set("miles_max", String(s.mmax));
   if (s.manual) p.set("manual", "1");
-  for (const k of ["drive", "body", "seller"] as const) for (const v of s[k]) p.append(k, v);
+  for (const k of ["color", "drive", "body", "seller"] as const) for (const v of s[k]) p.append(k, v);
   if (s.records) p.set("records", "1");
   if (s.sort !== "new") p.set("sort", s.sort);
   if (s.page > 1) p.set("page", String(s.page));
@@ -194,7 +192,7 @@ export function activeFilterCount(q: LotQuery): number {
     (q.make ? 1 : 0) +
     (q.model ? 1 : 0) +
     (q.trim ? 1 : 0) +
-    (q.color ? 1 : 0) +
+    q.color.length +
     (q.pmin !== null || q.pmax !== null ? 1 : 0) +
     (q.mmin !== null || q.mmax !== null ? 1 : 0) +
     (q.manual ? 1 : 0) +
@@ -219,7 +217,7 @@ function passes(c: Row, q: LotQuery, terms: string[], ...skip: Group[]): boolean
   if (on("make") && q.make && c.makeKey !== norm(q.make)) return false;
   if (on("model") && q.model && c.modelKey !== norm(q.model)) return false;
   if (on("trim") && q.trim && c.trimKey !== norm(q.trim)) return false;
-  if (on("color") && q.color && c.colorKey !== q.color) return false;
+  if (on("color") && q.color.length && !q.color.includes(c.colorKey)) return false;
   if (on("miles") && (q.mmin !== null || q.mmax !== null) && !between(c.mileage, q.mmin, q.mmax)) return false;
   if (on("price") && (q.pmin !== null || q.pmax !== null) && !between(c.price, q.pmin, q.pmax)) return false;
   if (on("manual") && q.manual && !MANUALS.includes(c.transmission ?? "")) return false;
@@ -272,14 +270,13 @@ export interface LotResult {
   pages: number;
   cards: LotCard[];
   /** For each filter group, how many cars each choice would show. */
-  counts: Record<"manual" | "drive" | "body" | "seller" | "records", Record<string, number>>;
+  counts: Record<"manual" | "color" | "drive" | "body" | "seller" | "records", Record<string, number>>;
   /** Choices for the year, make and model menus, from the cars on the Lot. */
   years: number[];
   makes: { name: string; n: number }[];
   models: { name: string; n: number }[];
   trims: { name: string; n: number }[];
-  /** Color families that have cars (the chosen one always kept). */
-  colors: { value: string; label: string; n: number }[];
+
 }
 
 export async function queryLot(q: LotQuery): Promise<LotResult> {
@@ -366,15 +363,13 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
     ? tally(rows.filter((c) => passes(c, q, terms, "trim")), (c) => c.trimKey, (c) => c.trim)
     : new Map<string, { name: string; n: number }>();
   if (q.trim && !trimMap.has(norm(q.trim))) trimMap.set(norm(q.trim), { name: q.trim, n: 0 });
-  const colorRows = rows.filter((c) => passes(c, q, terms, "color"));
-  const colors = COLORS.map((c) => ({ value: c.value, label: c.label, n: colorRows.filter((r) => r.colorKey === c.value).length })).filter(
-    (c) => c.n > 0 || c.value === q.color,
-  );
+
   const byName = (a: { name: string }, b: { name: string }) => a.name.localeCompare(b.name, "en", { sensitivity: "base", numeric: true });
 
   const counts: LotResult["counts"] = {
     manual: { "1": countFor("manual", (c) => MANUALS.includes(c.transmission ?? "")) },
     records: { "1": countFor("records", (c) => c.recordsOnFile) },
+    color: Object.fromEntries(COLORS.map((c) => [c.value, countFor("color", (r) => r.colorKey === c.value)])),
     drive: Object.fromEntries(DRIVETRAINS.map((d) => [d.value, countFor("drive", (c) => c.drivetrain === d.value)])),
     body: Object.fromEntries(BODY_STYLES.map((b) => [b.value, countFor("body", (c) => c.bodyStyle === b.value)])),
     seller: {
@@ -385,8 +380,11 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
 
   const pages = Math.max(1, Math.ceil(matched.length / PER_PAGE));
   const page = Math.min(q.page, pages);
-  const pageIds = matched.slice((page - 1) * PER_PAGE, page * PER_PAGE).map((c) => c.id);
-  const cards = pageIds.length ? await cardsFor(pageIds) : [];
+  // "Show more" rather than pages: page n shows the first n * PER_PAGE cars,
+  // so every address still shows exactly what the visitor had loaded.
+  const shownIds = matched.slice(0, page * PER_PAGE).map((c) => c.id);
+  const cards: LotCard[] = [];
+  for (const group of chunks(shownIds)) cards.push(...(await cardsFor(group)));
   return {
     total: matched.length,
     lotSize: rows.length,
@@ -398,11 +396,10 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
     makes: [...makeMap.values()].sort(byName),
     models: [...modelMap.values()].sort(byName),
     trims: [...trimMap.values()].sort(byName),
-    colors,
   };
 }
 
-/** Full card data, in the given order, for one page of cars (at most PER_PAGE ids). */
+/** Full card data, in the given order (at most MAX_IN_LIST ids, see chunks()). */
 async function cardsFor(ids: string[]): Promise<LotCard[]> {
   const db = getDb();
   const full = await db.select().from(listings).where(inArray(listings.id, ids)).all();

@@ -9,7 +9,7 @@
 import Base from "../layouts/Base.astro";
 import { BODY_STYLES, DRIVETRAINS } from "../lib/listing-options";
 import { formatMiles, formatPrice } from "../lib/listing-rules";
-import { SORTS, activeFilterCount, listedAgo, lotHref, norm, parseLotQuery, queryLot, type LotCard, type LotQuery } from "../lib/lot";
+import { COLORS, SORTS, activeFilterCount, listedAgo, lotHref, norm, parseLotQuery, queryLot, type LotCard, type LotQuery } from "../lib/lot";
 import { carUrl, url } from "../lib/paths";
 import "../styles/lot.css";
 
@@ -21,6 +21,7 @@ const moreGroups: { key: keyof LotQuery; legend: string; options: readonly Choic
   { key: "manual", legend: "Transmission", options: [{ value: "1", label: "Manual only" }], counts: lot.counts.manual },
   { key: "drive", legend: "Drivetrain", options: DRIVETRAINS, counts: lot.counts.drive },
   { key: "body", legend: "Body", options: BODY_STYLES, counts: lot.counts.body },
+  { key: "color", legend: "Exterior color", options: COLORS, counts: lot.counts.color },
   {
     key: "seller",
     legend: "Seller",
@@ -40,13 +41,14 @@ const hasPrice = q.pmin !== null || q.pmax !== null;
 const hasMiles = q.mmin !== null || q.mmax !== null;
 const moreOn = moreGroups.reduce((n, g) => n + g.options.filter((o) => isOn(g.key, o.value)).length, 0) + (hasPrice ? 1 : 0) + (hasMiles ? 1 : 0);
 const typed = (n: number | null) => (n === null ? "" : n.toLocaleString("en-US"));
-const clearMore: Partial<LotQuery> = { manual: false, records: false, drive: [], body: [], seller: [], pmin: null, pmax: null, mmin: null, mmax: null };
+const clearMore: Partial<LotQuery> = { manual: false, records: false, color: [], drive: [], body: [], seller: [], pmin: null, pmax: null, mmin: null, mmax: null };
 
 const anyFilter = activeFilterCount(q) > 0;
-const noFilters: Partial<LotQuery> = { ymin: null, ymax: null, make: "", model: "", trim: "", color: "", ...clearMore };
-const plain = !q.q && !anyFilter && q.sort === "new" && lot.page === 1;
+const noFilters: Partial<LotQuery> = { ymin: null, ymax: null, make: "", model: "", trim: "", ...clearMore };
+// The plain Lot: no search, filter or sort (Show more keeps it plain).
+const plain = !q.q && !anyFilter && q.sort === "new";
 
-// The newest car leads page 1 of the plain Lot when there are enough cars.
+// The newest car leads the plain Lot when there are enough cars.
 const feature: LotCard | null = plain && lot.cards.length >= 4 ? lot.cards[0] : null;
 const grid = feature ? lot.cards.slice(1) : lot.cards;
 
@@ -62,7 +64,7 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
 
 <Base
   title={pageTitle}
-  index={plain}
+  index={plain && lot.page === 1}
   description="Enthusiast cars for sale by their owners. Every listing is reviewed by a person. Fixed prices and offers, no auctions."
   image={feature?.photo ? new URL(feature.photo.url, Astro.url).toString() : undefined}
 >
@@ -103,10 +105,6 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
       >
         <option value="">Trim</option>
         {lot.trims.map((t) => <option value={t.name} selected={norm(t.name) === norm(q.trim)}>{t.name}</option>)}
-      </select>
-      <select class:list={["chip", { "is-set": !!q.color }]} name="color" aria-label="Exterior color">
-        <option value="">Ext. Color</option>
-        {lot.colors.map((c) => <option value={c.value} selected={c.value === q.color}>{c.label}</option>)}
       </select>
 
       <details class="chip-more" data-more>
@@ -323,26 +321,17 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
       }
 
       {
-        lot.pages > 1 && (
-          <nav class="lot__pages" aria-label="Pages">
-            {lot.page > 1 ? (
-              <a class="btn btn--secondary" href={lotHref(q, { page: lot.page - 1 })} rel="prev">
-                Previous
+        lot.cards.length > 0 && (
+          <div class="lot__more" data-more-cars>
+            <p class="lot__shown">
+              Showing {lot.cards.length.toLocaleString("en-US")} of {carsText(lot.total)}
+            </p>
+            {lot.page < lot.pages && (
+              <a class="btn btn--secondary lot__more-btn" href={lotHref(q, { page: lot.page + 1 })} rel="next" data-show-more>
+                Show more
               </a>
-            ) : (
-              <span />
             )}
-            <span class="lot__page-n">
-              Page {lot.page} of {lot.pages}
-            </span>
-            {lot.page < lot.pages ? (
-              <a class="btn btn--secondary" href={lotHref(q, { page: lot.page + 1 })} rel="next">
-                Next
-              </a>
-            ) : (
-              <span />
-            )}
-          </nav>
+          </div>
         )
       }
     </section>
@@ -377,6 +366,32 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
       if (t.name === "make") clear("qf-model");
       if (t.name === "make" || t.name === "model") clear("qf-trim");
       form.requestSubmit();
+    });
+    // Show more: fetch the next address (which renders every car so far) and
+    // add the cards this page does not have yet. Without the script the link
+    // simply opens that address.
+    document.addEventListener("click", async (e) => {
+      const link = (e.target as HTMLElement).closest?.("[data-show-more]") as HTMLAnchorElement | null;
+      if (!link || e.metaKey || e.ctrlKey || e.shiftKey) return;
+      e.preventDefault();
+      link.setAttribute("aria-busy", "true");
+      link.textContent = "Loading";
+      try {
+        const res = await fetch(link.href, { headers: { Accept: "text/html" } });
+        if (!res.ok) throw new Error(String(res.status));
+        const next = new DOMParser().parseFromString(await res.text(), "text/html");
+        const grid = document.querySelector(".lot__grid");
+        const have = grid ? grid.children.length : 0;
+        const incoming = Array.from(next.querySelector(".lot__grid")?.children ?? []).slice(have) as unknown as HTMLElement[];
+        for (const el of incoming) grid?.appendChild(el);
+        const box = document.querySelector("[data-more-cars]");
+        const fresh = next.querySelector("[data-more-cars]");
+        if (box && fresh) box.replaceWith(fresh);
+        history.replaceState(null, "", link.href);
+        (incoming[0]?.querySelector("a") as HTMLAnchorElement | null)?.focus({ preventScroll: true });
+      } catch {
+        window.location.href = link.href;
+      }
     });
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && more?.open) {

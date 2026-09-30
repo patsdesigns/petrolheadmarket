@@ -550,18 +550,26 @@
   margin: 0 0 18px;
 }
 
-.lot__pages {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 40px;
+/* Show more: a count and one button under the grid. */
+.lot__more {
+  display: grid;
+  justify-items: center;
+  gap: 14px;
+  margin-top: 44px;
 }
-.lot__page-n {
+.lot__shown {
+  margin: 0;
   color: var(--muted);
   font: 600 13px var(--font-label);
   letter-spacing: 0.1em;
   text-transform: uppercase;
+}
+.lot__more-btn {
+  min-width: 220px;
+}
+.lot__more-btn[aria-busy="true"] {
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .count {
