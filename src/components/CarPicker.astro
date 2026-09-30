@@ -74,14 +74,13 @@ const fields = [
   .car-pick {
     display: flex;
     flex-direction: column;
-    gap: 10px;
     min-width: 0;
   }
   .car-other {
     display: none;
   }
   .car-pick:has(option[value="__other"]:checked) .car-other {
-    display: flex;
+    display: grid;
   }
 </style>
 
