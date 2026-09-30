@@ -5,6 +5,7 @@ import Field from "../../../components/Field.astro";
 import Select from "../../../components/Select.astro";
 import TextArea from "../../../components/TextArea.astro";
 import Check from "../../../components/Check.astro";
+import CarPicker from "../../../components/CarPicker.astro";
 import Notice from "../../../components/Notice.astro";
 import PhotoUploader from "../../../components/PhotoUploader.tsx";
 import "../../../styles/uploader.css";
@@ -37,6 +38,7 @@ import {
 } from "../../../lib/listing-rules";
 import { getOwnListing, getPhotos, isEditable, photoView, saveListingFields } from "../../../lib/listings";
 import { notifyAdminsSubmitted } from "../../../lib/notify";
+import { resolveCarPicks } from "../../../lib/car-catalog";
 
 const user = Astro.locals.user!;
 const profile = Astro.locals.profile!;
@@ -70,6 +72,8 @@ if (Astro.request.method === "POST") {
   const form = await Astro.request.formData();
   posted = {};
   for (const [k, v] of form.entries()) if (typeof v === "string") posted[k] = v;
+  // Year, make and model come from dropdowns with an "Other" text box.
+  resolveCarPicks(posted);
   const postedStep = (posted.step as StepKey) ?? step.key;
   const nav = posted.nav ?? "next";
 
@@ -176,11 +180,7 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
       step.key === "car" && (
         <form method="post" data-autosave data-login={loginHref} novalidate>
           <input type="hidden" name="step" value="car" />
-          <div class="field-row field-row--3">
-            <Field name="year" label="Year" inputmode="numeric" value={v("year")} error={errors.year} maxlength={4} required={false} />
-            <Field name="make" label="Make" value={v("make")} error={errors.make} maxlength={40} required={false} hint="Like Porsche" />
-            <Field name="model" label="Model" value={v("model")} error={errors.model} maxlength={60} required={false} hint="Like 911 Carrera" />
-          </div>
+          <CarPicker year={v("year")} make={v("make")} model={v("model")} errors={errors} />
           <Field name="headline" label="Headline" value={v("headline")} error={errors.headline} maxlength={90} required={false}
             hint="One line that makes a buyer stop scrolling. Like: Two owners, full records, fresh clutch." />
           <div class="field-row">
@@ -369,7 +369,7 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
         <ul>
           <li>Buyers filter by year, make, model and transmission, so get those exactly right.</li>
           <li>The VIN is on the driver side of the dash, visible through the windshield, and on the door jamb.</li>
-          <li>Use the model name the way enthusiasts say it, like 911 Carrera or M3 Coupe.</li>
+          <li>Pick your year, make and model from the lists. If your car is not there, choose Other and type it.</li>
         </ul>
       )}
       {step.key === "history" && (

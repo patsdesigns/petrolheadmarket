@@ -1,0 +1,110 @@
+---
+// Year, make and model as dropdowns for the sell wizard. Each has an "Other"
+// choice that shows a text box (CSS :has, so it works without JavaScript).
+// A small script refills the model list when the make changes; without it
+// the seller can still pick Other and type the model.
+import { FIRST_LISTED_YEAR, MAKES, MAKE_NAMES, OTHER, modelsFor, yearOptions } from "../lib/car-catalog";
+
+interface Props {
+  year: string;
+  make: string;
+  model: string;
+  errors: Partial<Record<"year" | "make" | "model", string>>;
+}
+const { year, make, model, errors } = Astro.props;
+
+const years = yearOptions();
+const yearPick = !year ? "" : years.includes(year) ? year : OTHER;
+const makePick = !make ? "" : MAKE_NAMES.includes(make) ? make : OTHER;
+const models = makePick === OTHER ? [] : modelsFor(make);
+const modelPick = !model ? "" : models.includes(model) ? model : OTHER;
+
+const fields = [
+  {
+    name: "year",
+    label: "Year",
+    pick: yearPick,
+    options: years,
+    other: yearPick === OTHER ? year : "",
+    otherLabel: `Year (before ${FIRST_LISTED_YEAR})`,
+    otherOption: `Before ${FIRST_LISTED_YEAR}`,
+    inputmode: "numeric",
+    maxlength: 4,
+  },
+  { name: "make", label: "Make", pick: makePick, options: MAKE_NAMES, other: makePick === OTHER ? make : "", otherLabel: "Type the make", otherOption: "Other make", maxlength: 40 },
+  { name: "model", label: "Model", pick: modelPick, options: models, other: modelPick === OTHER ? model : "", otherLabel: "Type the model", otherOption: "Other model", maxlength: 60 },
+] as const;
+---
+
+<div class="field-row field-row--3 car-picker" data-car-picker>
+  {
+    fields.map((f) => {
+      const id = `f-${f.name}`;
+      const error = errors[f.name];
+      return (
+        <div class="car-pick">
+          <div class="field">
+            <label for={id}>{f.label}</label>
+            <select id={id} name={f.name} aria-invalid={error ? "true" : undefined} aria-describedby={error ? `${id}-error` : undefined}>
+              <option value="">Choose one</option>
+              {f.options.map((o) => <option value={o} selected={o === f.pick}>{o}</option>)}
+              <option value={OTHER} selected={f.pick === OTHER}>{f.otherOption}</option>
+            </select>
+            {error && <span class="error" id={`${id}-error`}>{error}</span>}
+          </div>
+          <div class="field car-other">
+            <label for={`${id}_other`}>{f.otherLabel}</label>
+            <input
+              id={`${id}_other`}
+              name={`${f.name}_other`}
+              value={f.other}
+              maxlength={f.maxlength}
+              inputmode={"inputmode" in f ? f.inputmode : undefined}
+              autocomplete="off"
+            />
+          </div>
+        </div>
+      );
+    })
+  }
+</div>
+<script type="application/json" id="car-catalog" set:html={JSON.stringify(MAKES).replace(/</g, "\\u003c")} />
+
+<style>
+  .car-pick {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .car-other {
+    display: none;
+  }
+  .car-pick:has(option[value="__other"]:checked) .car-other {
+    display: grid;
+  }
+</style>
+
+<script>
+  const root = document.querySelector<HTMLElement>("[data-car-picker]");
+  const catalog = JSON.parse(document.getElementById("car-catalog")?.textContent || "{}") as Record<string, string[]>;
+  const make = root?.querySelector<HTMLSelectElement>("#f-make");
+  const model = root?.querySelector<HTMLSelectElement>("#f-model");
+
+  // Refill the model list for the chosen make, keeping Choose one and Other.
+  make?.addEventListener("change", () => {
+    if (!model) return;
+    const first = model.options[0];
+    const other = model.options[model.options.length - 1];
+    model.replaceChildren(first, ...(catalog[make.value] ?? []).map((m) => new Option(m, m)), other);
+    // A make with no list (Other) goes straight to typing the model.
+    model.value = make.value === "__other" ? "__other" : "";
+    model.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+
+  // Picking Other moves the cursor into its text box.
+  root?.querySelectorAll<HTMLSelectElement>("select").forEach((sel) =>
+    sel.addEventListener("change", (e) => {
+      if (sel.value === "__other" && e.isTrusted) document.getElementById(`${sel.id}_other`)?.focus();
+    }),
+  );
+</script>
