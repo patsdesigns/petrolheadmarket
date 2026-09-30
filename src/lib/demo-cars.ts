@@ -1,17 +1,19 @@
-import { env } from "cloudflare:workers";
-import { count, eq, inArray } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 import { chunks, getDb } from "../db/client";
 import { listingPhotos, listings, profiles, user as users } from "../db/schema";
 import { audit } from "./audit";
 import { baseSlug } from "./cms";
-import { safeError } from "./log";
+import { DEMO_PHOTO_PREFIX } from "./paths";
 
 // Demo cars: 25 made-up listings an admin can add from /admin to see how the
 // Lot and car pages look with cars on them, and remove again in one click.
-// They belong to one demo seller account (which cannot sign in), their photos
-// are simple drawings shipped in public/demo-cars and copied into R2, and
-// every description says the car is a demo. Removing deletes the demo seller,
-// which deletes the listings with their photos, offers and threads.
+// They belong to one demo seller account (which cannot sign in), and every
+// description says the car is a demo. Their photos are simple drawings that
+// ship with the site (public/demo-cars); the photo rows point at those files
+// (keys starting "demo-cars/", which photoUrl() serves as static files), so
+// adding them is a single database batch with nothing copied into R2.
+// Removing deletes the demo seller, which deletes the listings with their
+// photo rows, offers and threads.
 
 export const DEMO_SELLER_ID = "demo-seller";
 const DEMO_EMAIL = "demo-seller@demo.invalid";
@@ -100,18 +102,13 @@ export async function demoCount(): Promise<number> {
   return row?.n ?? 0;
 }
 
+/** The static file for drawing n (1 to 16). */
+const demoPhotoKey = (n: number) => `${DEMO_PHOTO_PREFIX}car-${String(n).padStart(2, "0")}.jpg`;
+
 /** Add the 25 demo cars. Returns how many were added (0 when they are already there). */
-export async function addDemoCars(actorId: string, origin: string): Promise<number> {
+export async function addDemoCars(actorId: string): Promise<number> {
   const db = getDb();
   if ((await demoCount()) > 0) return 0;
-
-  // The pictures ship with the site as static files.
-  const pool = new Map<number, ArrayBuffer>();
-  for (let n = 1; n <= POOL; n++) {
-    const res = await env.ASSETS.fetch(new Request(new URL(`/demo-cars/car-${String(n).padStart(2, "0")}.jpg`, origin)));
-    if (!res.ok) throw new Error(`Demo photo ${n} is missing (${res.status}).`);
-    pool.set(n, await res.arrayBuffer());
-  }
 
   const now = Date.now();
   await db
@@ -123,7 +120,6 @@ export async function addDemoCars(actorId: string, origin: string): Promise<numb
   const taken = new Set((await db.select({ slug: listings.slug }).from(listings).all()).map((r) => r.slug));
   const listingRows: (typeof listings.$inferInsert)[] = [];
   const photoRows: (typeof listingPhotos.$inferInsert)[] = [];
-  const puts: { key: string; n: number }[] = [];
 
   CARS.forEach((c, i) => {
     const id = crypto.randomUUID();
@@ -172,28 +168,17 @@ export async function addDemoCars(actorId: string, origin: string): Promise<numb
     const fits = BY_BODY[c.body];
     const order = [fits[i % fits.length], ...Array.from({ length: POOL }, (_, k) => ((i * 5 + k) % POOL) + 1).filter((n) => n !== fits[i % fits.length])];
     order.slice(0, PHOTOS_PER_CAR).forEach((n, position) => {
-      const photoId = crypto.randomUUID();
-      const key = `listings/${id}/${photoId}.jpg`;
-      photoRows.push({ id: photoId, listingId: id, r2Key: key, position, width: 1200, height: 800 });
-      puts.push({ key, n });
+      photoRows.push({ id: crypto.randomUUID(), listingId: id, r2Key: demoPhotoKey(n), position, width: 1200, height: 800 });
     });
   });
 
-  // Photos first, so no car shows up on the Lot without its pictures.
-  for (const group of chunks(puts, 10)) {
-    await Promise.all(group.map((p) => env.PHOTOS.put(p.key, pool.get(p.n)!, { httpMetadata: { contentType: "image/jpeg" } })));
-  }
-  try {
-    const statements = [
-      ...listingRows.map((row) => db.insert(listings).values(row)),
-      // D1 takes at most 100 bound values per statement: 14 photos of 7 columns.
-      ...chunks(photoRows, 14).map((rows) => db.insert(listingPhotos).values(rows)),
-    ];
-    await db.batch(statements as [(typeof statements)[number], ...(typeof statements)[number][]]);
-  } catch (err) {
-    await env.PHOTOS.delete(puts.map((p) => p.key)).catch(() => {});
-    throw err;
-  }
+  // One batch, so the cars appear together or not at all.
+  const statements = [
+    ...listingRows.map((row) => db.insert(listings).values(row)),
+    // D1 takes at most 100 bound values per statement: 14 photos of 7 columns.
+    ...chunks(photoRows, 14).map((rows) => db.insert(listingPhotos).values(rows)),
+  ];
+  await db.batch(statements as [(typeof statements)[number], ...(typeof statements)[number][]]);
   await audit(actorId, "demo_cars_added", "listing", DEMO_SELLER_ID, { count: listingRows.length });
   return listingRows.length;
 }
@@ -201,20 +186,10 @@ export async function addDemoCars(actorId: string, origin: string): Promise<numb
 /** Remove every demo car (and anything people did with them). Returns how many were removed. */
 export async function removeDemoCars(actorId: string): Promise<number> {
   const db = getDb();
-  const ids = (await db.select({ id: listings.id }).from(listings).where(eq(listings.userId, DEMO_SELLER_ID)).all()).map((r) => r.id);
-  const keys: string[] = [];
-  for (const group of chunks(ids)) {
-    keys.push(...(await db.select({ key: listingPhotos.r2Key }).from(listingPhotos).where(inArray(listingPhotos.listingId, group)).all()).map((r) => r.key));
-  }
-  // Deleting the demo seller deletes the listings, photos, offers and threads with it.
+  const removed = await demoCount();
+  // Deleting the demo seller deletes the listings, photo rows, offers and
+  // threads with it. The drawings are static files, so there is nothing in R2.
   await db.delete(users).where(eq(users.id, DEMO_SELLER_ID));
-  for (const group of chunks(keys, 1000)) {
-    try {
-      await env.PHOTOS.delete(group);
-    } catch (err) {
-      console.error("[demo] photo delete failed", safeError(err));
-    }
-  }
-  await audit(actorId, "demo_cars_removed", "listing", DEMO_SELLER_ID, { count: ids.length });
-  return ids.length;
+  await audit(actorId, "demo_cars_removed", "listing", DEMO_SELLER_ID, { count: removed });
+  return removed;
 }

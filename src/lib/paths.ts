@@ -11,9 +11,13 @@ export function url(path = "/"): string {
   return `${BASE}${clean}`;
 }
 
-/** Public URL of an R2 photo, served by /photos/{key}. */
+/** Where the demo cars' drawings live: static files, not R2 (see demo-cars.ts). */
+export const DEMO_PHOTO_PREFIX = "demo-cars/";
+
+/** Public URL of a listing photo: R2 photos are served by /photos/{key}; the demo cars' photos are static files. */
 export function photoUrl(key: string): string {
-  return url(`/photos/${key.split("/").map(encodeURIComponent).join("/")}`);
+  const path = key.split("/").map(encodeURIComponent).join("/");
+  return key.startsWith(DEMO_PHOTO_PREFIX) ? url(`/${path}`) : url(`/photos/${path}`);
 }
 
 /** The public page of a car on the Lot. */

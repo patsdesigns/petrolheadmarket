@@ -21,7 +21,7 @@ if (Astro.request.method === "POST") {
   const actor = Astro.locals.profile.userId;
   try {
     if (intent === "demo_add") {
-      const n = await addDemoCars(actor, Astro.url.origin);
+      const n = await addDemoCars(actor);
       return Astro.redirect(url(`/admin?done=${n ? "demo_added" : "demo_there"}`), 303);
     }
     if (intent === "demo_remove") {
@@ -80,7 +80,7 @@ const doneText: Record<string, string> = { changes: "Changes requested.", reject
 const demoText: Record<string, [string, "ok" | "error"]> = {
   demo_added: ["Demo cars added. They are on the Lot now.", "ok"],
   demo_there: ["The demo cars are already on the Lot.", "ok"],
-  demo_removed: ["Demo cars removed, with their photos, offers and messages.", "ok"],
+  demo_removed: ["Demo cars removed, with any offers and messages on them.", "ok"],
   demo_failed: ["That did not work. Nothing was changed on the Lot. Try again in a minute.", "error"],
 };
 const demos = await demoCount();
@@ -178,7 +178,7 @@ const waited = (d: Date | null) => {
             <summary class="btn btn--secondary">Remove demo cars</summary>
             <form method="post">
               <input type="hidden" name="intent" value="demo_remove" />
-              <p>This deletes all {demos} demo cars with their photos, and any offers and messages on them.</p>
+              <p>This deletes all {demos} demo cars, and any offers and messages on them.</p>
               <button class="btn" type="submit">Yes, remove demo cars</button>
             </form>
           </details>
