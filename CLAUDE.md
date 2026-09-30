@@ -5,7 +5,7 @@ Petrol Head Market (a working name: the real name is not decided yet, and it liv
 This repo is the whole site: the Lot (home page, search and filters), the car pages, and every account, selling, buying and admin page. It is one Astro app on Cloudflare Workers, served from the site root. (Until September 2026 the public pages were a Webflow site and this app ran under `/app` on Webflow Cloud, publishing approved cars into the Webflow CMS. That setup is gone; old `/app/...` links redirect.)
 
 - Site: the Cloudflare Workers address (`https://petrolheadmarket.<subdomain>.workers.dev`) until a custom domain is added
-- Deploys: Cloudflare Workers Builds, connected to the GitHub repo, builds with `npm run build` and deploys with `npm run deploy` (`wrangler deploy`, then `wrangler d1 migrations apply DB --remote`) on every push to the production branch
+- Deploys: Cloudflare Workers Builds, connected to the GitHub repo (production branch `claude/new-session-y1cmbc` while testing, `main` after the switch), builds with `npm run build` and deploys with `npm run deploy` (`wrangler deploy`, then `wrangler d1 migrations apply DB --remote`) on every push to the production branch
 
 ## Stack (decided)
 
