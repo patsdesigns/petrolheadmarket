@@ -260,6 +260,8 @@ export interface LotCard {
   sellerType: "private" | "dealer";
   publishedAt: Date | null;
   photo: { url: string; width: number | null; height: number | null } | null;
+  /** The next few photos after the main one, for the hover flip. */
+  more: string[];
   photoCount: number;
 }
 
@@ -279,7 +281,8 @@ export interface LotResult {
 
 }
 
-export async function queryLot(q: LotQuery): Promise<LotResult> {
+/** Every car on the Lot, with the columns the filters and search need. */
+async function loadRows(): Promise<Row[]> {
   const db = getDb();
   const lotWhere = and(inArray(listings.status, [...LOT_STATUSES]), isNull(listings.deletedAt));
   const raw = await db
@@ -306,7 +309,7 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
     .where(lotWhere)
     .all();
 
-  const rows: Row[] = raw.map((r) => ({
+  return raw.map((r) => ({
     ...r,
     makeKey: norm(r.make ?? ""),
     modelKey: norm(r.model ?? ""),
@@ -330,8 +333,13 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
         .join(" "),
     )} `,
   }));
+}
 
-  const terms = norm(q.q).split(" ").filter(Boolean).slice(0, 8);
+const searchTerms = (text: string) => norm(text).split(" ").filter(Boolean).slice(0, 8);
+
+export async function queryLot(q: LotQuery): Promise<LotResult> {
+  const rows = await loadRows();
+  const terms = searchTerms(q.q);
   const matched = rows.filter((c) => passes(c, q, terms)).sort((a, b) => SORTERS[q.sort](a, b) || a.id.localeCompare(b.id));
 
   const countFor = (group: Group, test: (c: Row) => boolean) => rows.filter((c) => passes(c, q, terms, group) && test(c)).length;
@@ -400,28 +408,39 @@ export async function queryLot(q: LotQuery): Promise<LotResult> {
 }
 
 /** Full card data, in the given order (at most MAX_IN_LIST ids, see chunks()). */
-async function cardsFor(ids: string[]): Promise<LotCard[]> {
+export async function cardsFor(ids: string[]): Promise<LotCard[]> {
   const db = getDb();
-  const full = await db.select().from(listings).where(inArray(listings.id, ids)).all();
-  const photoCounts = await db
-    .select({ listingId: listingPhotos.listingId, n: count() })
-    .from(listingPhotos)
-    .where(inArray(listingPhotos.listingId, ids))
-    .groupBy(listingPhotos.listingId)
-    .all();
-  const mains = await db
-    .select({ listingId: listingPhotos.listingId, r2Key: listingPhotos.r2Key, width: listingPhotos.width, height: listingPhotos.height })
-    .from(listingPhotos)
-    .where(and(inArray(listingPhotos.listingId, ids), eq(listingPhotos.position, sql`(SELECT MIN(p2.position) FROM listing_photos p2 WHERE p2.listing_id = ${listingPhotos.listingId})`)))
-    .orderBy(asc(listingPhotos.listingId))
-    .all();
+  const [full, photoCounts, firsts] = await Promise.all([
+    db.select().from(listings).where(inArray(listings.id, ids)).all(),
+    db
+      .select({ listingId: listingPhotos.listingId, n: count() })
+      .from(listingPhotos)
+      .where(inArray(listingPhotos.listingId, ids))
+      .groupBy(listingPhotos.listingId)
+      .all(),
+    // The first few photos of each car: the main photo, then the ones the
+    // card flips through on hover.
+    db
+      .select({ listingId: listingPhotos.listingId, r2Key: listingPhotos.r2Key, width: listingPhotos.width, height: listingPhotos.height })
+      .from(listingPhotos)
+      .where(
+        and(
+          inArray(listingPhotos.listingId, ids),
+          sql`(SELECT COUNT(*) FROM listing_photos p2 WHERE p2.listing_id = ${listingPhotos.listingId} AND p2.position < ${listingPhotos.position}) < ${CARD_PHOTOS}`,
+        ),
+      )
+      .orderBy(asc(listingPhotos.listingId), asc(listingPhotos.position))
+      .all(),
+  ]);
+  const photosBy = new Map<string, typeof firsts>();
+  for (const p of firsts) photosBy.set(p.listingId, [...(photosBy.get(p.listingId) ?? []), p]);
   const byId = new Map(full.map((l) => [l.id, l]));
   const countBy = new Map(photoCounts.map((p) => [p.listingId, p.n]));
-  const mainBy = new Map(mains.map((m) => [m.listingId, m]));
   return ids.flatMap((id) => {
     const l = byId.get(id);
     if (!l || !l.slug) return [];
-    const main = mainBy.get(id);
+    const shots = photosBy.get(id) ?? [];
+    const main = shots[0];
     return [
       {
         id,
@@ -440,10 +459,43 @@ async function cardsFor(ids: string[]): Promise<LotCard[]> {
         sellerType: l.sellerType,
         publishedAt: l.publishedAt,
         photo: main ? { url: photoUrl(main.r2Key), width: main.width, height: main.height } : null,
+        more: shots.slice(1).map((p) => photoUrl(p.r2Key)),
         photoCount: countBy.get(id) ?? 0,
       },
     ];
   });
+}
+
+/** Photos per card: the main one plus the ones the card flips through on hover. */
+const CARD_PHOTOS = 5;
+
+export interface SearchResult {
+  total: number;
+  cars: { title: string; slug: string; price: number | null; mileage: number | null; photo: string | null }[];
+  /** Make and model groups among the matches, most cars first. */
+  groups: { make: string; model: string; n: number }[];
+}
+
+/** The header's live search: the newest matching cars and the make and model groups they fall in. */
+export async function searchLot(text: string, limit = 5): Promise<SearchResult> {
+  const terms = searchTerms(text);
+  if (!terms.length) return { total: 0, cars: [], groups: [] };
+  const rows = await loadRows();
+  const matched = rows.filter((c) => terms.every((t) => c.hay.includes(` ${t}`))).sort(SORTERS.new);
+  const groups = new Map<string, { make: string; model: string; n: number }>();
+  for (const c of matched) {
+    if (!c.make || !c.model) continue;
+    const k = `${c.makeKey}|${c.modelKey}`;
+    const g = groups.get(k) ?? { make: c.make, model: c.model, n: 0 };
+    g.n++;
+    groups.set(k, g);
+  }
+  const cards = matched.length ? await cardsFor(matched.slice(0, limit).map((c) => c.id)) : [];
+  return {
+    total: matched.length,
+    cars: cards.map((c) => ({ title: c.title, slug: c.slug, price: c.price, mileage: c.mileage, photo: c.photo?.url ?? null })),
+    groups: [...groups.values()].sort((a, b) => b.n - a.n || a.make.localeCompare(b.make)).slice(0, 4),
+  };
 }
 
 /** "Listed today", "Listed 3 days ago", or the date for older cars. Computed per request. */

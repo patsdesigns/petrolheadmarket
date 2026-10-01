@@ -322,15 +322,15 @@ export default function PhotoUploader({ endpoint, initialPhotos, min, max }: Pro
                     onPointerCancel={onHandleUp}
                     onKeyDown={(e) => onHandleKey(e, i, photo.id)}
                   >
-                    ⠿
+                    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><g fill="currentColor"><circle cx="5" cy="3" r="1.2" /><circle cx="9" cy="3" r="1.2" /><circle cx="5" cy="7" r="1.2" /><circle cx="9" cy="7" r="1.2" /><circle cx="5" cy="11" r="1.2" /><circle cx="9" cy="11" r="1.2" /></g></svg>
                   </button>
                   {i > 0 && (
                     <button type="button" className="pu__tool" aria-label={`Make photo ${i + 1} the main photo`} title="Make main photo" onClick={() => move(photo.id, 0)}>
-                      ★
+                      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><path d="M7 1.8l1.6 3.3 3.6.5-2.6 2.5.6 3.6L7 10l-3.2 1.7.6-3.6-2.6-2.5 3.6-.5z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /></svg>
                     </button>
                   )}
                   <button type="button" className="pu__tool" aria-label={`Delete photo ${i + 1}`} title="Delete" onClick={() => remove(photo)}>
-                    ✕
+                    <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
                   </button>
                 </div>
               </li>

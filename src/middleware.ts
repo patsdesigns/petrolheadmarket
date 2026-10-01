@@ -1,7 +1,7 @@
 import { defineMiddleware } from "astro:middleware";
 import type { APIContext, MiddlewareNext } from "astro";
 import { getAuth } from "./lib/auth";
-import { ensureProfile } from "./lib/profile";
+import { ensureProfile, roleFor } from "./lib/profile";
 import { publicOrigin } from "./lib/config";
 import { url } from "./lib/paths";
 import { safeNext } from "./lib/forms";
@@ -22,6 +22,7 @@ const PUBLIC_PREFIXES = [
   "/404",
   "/suspended",
   "/contact",
+  "/how-it-works",
 ];
 // Pages that look the listing up before asking anyone to sign in (a car that
 // is no longer on the Lot gets a friendly page, not a sign-up form). Only GET
@@ -137,8 +138,17 @@ const handle = async (context: APIContext, next: MiddlewareNext): Promise<Respon
     authCookies = result?.headers?.getSetCookie?.() ?? [];
     const data = result?.response ?? null;
     if (data) {
-      // Sync the admin role on every request (writes only when it changes).
-      const profile = await ensureProfile(data.user, true);
+      // The profile, the unread badge and the admin to-do counts don't depend
+      // on each other, so they go to the database together (one round trip
+      // of waiting instead of three). The role comes from roleFor(), which is
+      // what ensureProfile() syncs the stored role to.
+      const pageRequest = !path.startsWith("/api/");
+      const [profile, unread, counts] = await Promise.all([
+        // Sync the admin role on every request (writes only when it changes).
+        ensureProfile(data.user, true),
+        pageRequest ? unreadCount(data.user.id) : Promise.resolve(0),
+        pageRequest && roleFor(data.user) === "admin" ? adminCounts() : Promise.resolve(NO_ADMIN_COUNTS),
+      ]);
       if (profile.suspendedAt) {
         // Suspended by an admin: treated as signed out everywhere. Their
         // sessions were deleted when suspended, so this only catches a race.
@@ -147,13 +157,11 @@ const handle = async (context: APIContext, next: MiddlewareNext): Promise<Respon
         context.locals.user = data.user;
         context.locals.session = data.session;
         context.locals.profile = profile;
-        // Header badge; API calls don't render the header.
-        if (!path.startsWith("/api/")) {
-          context.locals.unread = await unreadCount(data.user.id);
-          // Admin to-do counts for the header, admin tabs and My Garage.
-          // With email off this is how the owner hears about new work.
-          if (profile.role === "admin") context.locals.adminCounts = await adminCounts();
-        }
+        // Header badge (API calls don't render the header) and the admin
+        // to-do counts for the header, admin tabs and My Garage. With email
+        // off the counts are how the owner hears about new work.
+        context.locals.unread = unread;
+        if (profile.role === "admin") context.locals.adminCounts = counts;
       }
     }
   }

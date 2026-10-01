@@ -2,6 +2,7 @@
 import { and, count, eq, or } from "drizzle-orm";
 import { env } from "cloudflare:workers";
 import Base from "../../../layouts/Base.astro";
+import Crumbs from "../../../components/Crumbs.astro";
 import Field from "../../../components/Field.astro";
 import Select from "../../../components/Select.astro";
 import TextArea from "../../../components/TextArea.astro";
@@ -197,7 +198,7 @@ const fmtDate = (d: Date | null | undefined) =>
 ---
 
 <Base title={`Review: ${title}`}>
-  <a class="back" href={url("/admin")}>← Review Queue</a>
+  <Crumbs items={[{ label: "Admin", href: url("/admin") }, { label: "Listings", href: url("/admin/listings") }, { label: title }]} />
   <div class="head">
     <h1 class="page-title">{title}</h1>
     <StatusBadge status={listing.status} />
@@ -257,7 +258,7 @@ const fmtDate = (d: Date | null | undefined) =>
                 <form method="post" onsubmit="return confirm('Delete this photo? The seller will not be told.')">
                   <input type="hidden" name="intent" value="delete-photo" />
                   <input type="hidden" name="photoId" value={p.id} />
-                  <button type="submit" class="del" aria-label={`Delete photo ${i + 1}`}>✕</button>
+                  <button type="submit" class="del" aria-label={`Delete photo ${i + 1}`}><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 2.5l7 7M9.5 2.5l-7 7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" /></svg></button>
                 </form>
               </li>
             ))
@@ -533,7 +534,7 @@ const fmtDate = (d: Date | null | undefined) =>
     height: 32px;
     border: 0;
     border-radius: 8px;
-    background: rgba(255, 255, 255, 0.9);
+    background: rgba(var(--hi-rgb), 0.9);
     -webkit-backdrop-filter: blur(8px);
     backdrop-filter: blur(8px);
     cursor: pointer;
@@ -553,8 +554,18 @@ const fmtDate = (d: Date | null | undefined) =>
     margin-bottom: 0;
   }
   .edit summary::after {
-    content: "▾";
-    margin-left: -20px;
+    content: "";
+    width: 8px;
+    height: 8px;
+    margin: -4px 4px 0 -20px;
+    border-right: 1.6px solid var(--muted);
+    border-bottom: 1.6px solid var(--muted);
+    transform: rotate(45deg);
+    transition: transform 0.15s ease;
+  }
+  .edit[open] summary::after {
+    margin-top: 4px;
+    transform: rotate(-135deg);
   }
   .edit form {
     margin-top: 16px;

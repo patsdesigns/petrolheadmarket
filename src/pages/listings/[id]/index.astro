@@ -2,6 +2,7 @@
 import { SITE_NAME } from "../../../lib/brand";
 import { and, eq } from "drizzle-orm";
 import Base from "../../../layouts/Base.astro";
+import Crumbs from "../../../components/Crumbs.astro";
 import Notice from "../../../components/Notice.astro";
 import { getDb } from "../../../db/client";
 import { listings } from "../../../db/schema";
@@ -108,7 +109,7 @@ const deleteConfirm =
 ---
 
 <Base title={title}>
-  <a class="back" href={url(GARAGE)}>← My Garage</a>
+  <Crumbs items={[{ label: "My Garage", href: url(GARAGE) }, { label: title }]} />
   <p class="eyebrow">
     <span>{STATUS_LABELS[listing.status]}</span>
     {location && <span>{location}</span>}

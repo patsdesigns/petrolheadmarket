@@ -13,12 +13,12 @@
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .inbox {
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(var(--hi-rgb), 0.92);
   }
 }
 .inbox__list {
   border-right: 1px solid var(--hair);
-  background: rgba(255, 255, 255, 0.25);
+  background: rgba(var(--hi-rgb), 0.25);
   overflow-y: auto;
   max-height: 78vh;
 }

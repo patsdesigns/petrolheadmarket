@@ -1,0 +1,61 @@
+---
+import { z } from "zod";
+import Base from "../layouts/Base.astro";
+import Crumbs from "../components/Crumbs.astro";
+import CarCard from "../components/CarCard.astro";
+import Notice from "../components/Notice.astro";
+import { url, GARAGE } from "../lib/paths";
+import { parseForm, safeNext } from "../lib/forms";
+import { savedCards, setSaved } from "../lib/saved";
+import "../styles/lot.css";
+
+// Saved Cars: the cars a member hearted. The heart posts here when the page
+// has no JavaScript; with it, the heart uses /api/saved instead.
+const user = Astro.locals.user!;
+let error: string | null = null;
+if (Astro.request.method === "POST") {
+  const form = await parseForm(
+    Astro.request,
+    z.object({ listing: z.string().min(1).max(64), save: z.enum(["0", "1"]), next: z.string().max(500).optional() }),
+  );
+  if (form.ok) {
+    const result = await setSaved(user.id, form.data.listing, form.data.save === "1");
+    if (result.ok) return Astro.redirect(form.data.next ? safeNext(form.data.next) : url("/saved"), 303);
+    error = result.error;
+  } else {
+    error = "That did not work. Please try again.";
+  }
+}
+const cards = await savedCards(user.id);
+const now = Date.now();
+---
+
+<Base title="Saved Cars">
+  <Crumbs items={[{ label: "My Garage", href: url(GARAGE) }, { label: "Saved Cars" }]} />
+  <h1 class="page-title">Saved Cars</h1>
+  <p class="lede">
+    {cards.length ? `${cards.length} ${cards.length === 1 ? "car" : "cars"} you saved. Sold cars stay here so you can see what they went for.` : "Tap the heart on any car to keep it here."}
+  </p>
+  {error && <Notice tone="error">{error}</Notice>}
+  {
+    cards.length ? (
+      <ul class="lot__grid saved-grid" role="list">
+        {cards.map((c, i) => (
+          <CarCard card={c} eager={i < 6} saved={true} signedIn={true} now={now} />
+        ))}
+      </ul>
+    ) : (
+      <div class="card lot__empty">
+        <h2>No Saved Cars Yet</h2>
+        <p>Browse the Lot and tap the heart on the cars you like. They wait for you here.</p>
+        <a class="btn" href={url("/")}>Browse the Lot</a>
+      </div>
+    )
+  }
+</Base>
+
+<style>
+  .saved-grid {
+    margin-top: 28px;
+  }
+</style>

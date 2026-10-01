@@ -2,6 +2,7 @@
 // A seller writes to a buyer who made an offer, before deciding on it. The
 // thread is created with the first message (never on this GET).
 import Base from "../../layouts/Base.astro";
+import Crumbs from "../../components/Crumbs.astro";
 import Notice from "../../components/Notice.astro";
 import SafetyNote from "../../components/SafetyNote.astro";
 import { url, carUrl } from "../../lib/paths";
@@ -34,7 +35,7 @@ if (Astro.request.method === "POST") {
 ---
 
 <Base title="Message the Buyer">
-  <a class="back" href={url("/offers")}>← Offers</a>
+  <Crumbs items={[{ label: "Offers", href: url("/offers") }, { label: "Message the Buyer" }]} />
   <h1 class="page-title">Message the Buyer</h1>
   <div class="card compose">
     <p class="about">

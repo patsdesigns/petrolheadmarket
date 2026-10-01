@@ -10,8 +10,8 @@
   justify-self: start;
   padding: 10px 14px;
   border-radius: 16px 16px 16px 6px;
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(255, 255, 255, 0.9);
+  background: rgba(var(--hi-rgb), 0.85);
+  border: 1px solid rgba(var(--hi-rgb), 0.9);
   box-shadow: 0 1px 2px rgba(21, 23, 27, 0.05), 0 4px 14px rgba(21, 23, 27, 0.05);
 }
 .mt__msg.is-mine {
@@ -53,7 +53,7 @@
   font: inherit;
   font-size: 17px;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(var(--hi-rgb), 0.7);
   border: 1px solid var(--line);
   border-radius: var(--radius-btn);
   resize: vertical;

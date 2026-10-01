@@ -2,6 +2,7 @@
 import { SITE_INITIALS, SITE_NAME, SITE_TAGLINE } from "../lib/brand";
 // Light glass site header, shared by every page. The red promise strip was removed at the owner's request.
 import { url, siteUrl, GARAGE } from "../lib/paths";
+import { SHORTCUTS, activeShortcut } from "../lib/nav";
 
 interface Props {
   user?: { displayName: string; isAdmin: boolean } | null;
@@ -16,6 +17,7 @@ const path = Astro.url.pathname;
 // search keeps the filters that are set. Everywhere else it opens the Lot.
 const onLot = path === url("/");
 const q = onLot ? (Astro.url.searchParams.get("q") ?? "").trim().slice(0, 80) : "";
+const shortcut = onLot ? activeShortcut(Astro.url.searchParams) : null;
 const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p));
 ---
 
@@ -42,6 +44,11 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
           enterkeyhint="search"
           placeholder="Search by make, model, year, etc."
           form={onLot ? "lot" : undefined}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded="false"
+          aria-controls="site-q-pop"
+          data-search-api={url("/api/search")}
         />
         <button class="hsearch__go" type="submit" form={onLot ? "lot" : undefined} aria-label="Search">
           <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"
@@ -52,6 +59,8 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
               stroke-linecap="round"></path></svg
           >
         </button>
+        <div class="hsearch__pop" id="site-q-pop" role="listbox" aria-label="Search suggestions" hidden></div>
+        <p class="sr-only" aria-live="polite" id="site-q-status"></p>
       </form>
       <nav class="actions" aria-label="Account">
         {
@@ -70,11 +79,12 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
                   {user.isAdmin && adminTodo > 0 && (
                     <span class="count" aria-label={`${adminTodo} waiting for an admin`}>{adminTodo}</span>
                   )}
-                  <span aria-hidden="true" class="menu__caret">▾</span>
+                  <svg class="menu__caret" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>
                 </summary>
                 <div class="menu__panel">
-                  <a href={url("/account")}>Account Settings</a>
+                  <a href={url("/saved")}>Saved Cars</a>
                   <a href={url("/offers")}>Offers</a>
+                  <a href={url("/account")}>Account Settings</a>
                   {user.isAdmin && (
                     <a href={url("/admin")}>
                       Review Queue
@@ -91,6 +101,10 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
             <a class="ghost" href={url("/login")}>Sign In</a>
           )
         }
+        <button class="ghost theme" type="button" data-theme-toggle aria-label="Switch to dark mode" title="Dark mode">
+          <svg class="theme__moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" /></svg>
+          <svg class="theme__sun" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2" /><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8" stroke="currentColor" stroke-width="2" stroke-linecap="round" /></svg>
+        </button>
         <a class="sell" href={url("/sell")}>
           <span class="sell-long">Sell Your Car</span><span class="sell-short">Sell</span>
         </a>
@@ -98,8 +112,187 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
     </div>
   </header>
 </div>
+<nav class="cats" aria-label="Browse">
+  <div class="cats__inner">
+    <ul class="cats__list">
+      {
+        SHORTCUTS.map((s) => (
+          <li>
+            <a href={url(s.href)} aria-current={shortcut === s.href ? "page" : undefined}>{s.label}</a>
+          </li>
+        ))
+      }
+    </ul>
+    <a class="cats__how" href={url("/how-it-works")} aria-current={path === url("/how-it-works") ? "page" : undefined}>How It Works</a>
+  </div>
+</nav>
 
 <script>
+  // Live search: as people type, a dropdown shows the matching make and model
+  // groups and the newest matching cars. Arrow keys move, Enter opens the
+  // highlighted choice (or searches the Lot), Escape closes it.
+  const input = document.getElementById("site-q") as HTMLInputElement | null;
+  const pop = document.getElementById("site-q-pop");
+  const status = document.getElementById("site-q-status");
+  if (input && pop && status) {
+    const api = input.dataset.searchApi ?? "/api/search";
+    let timer = 0;
+    let ctrl: AbortController | null = null;
+    let active = -1;
+    let lastQ = "";
+    type Result = {
+      q: string;
+      total: number;
+      all: string;
+      cars: { title: string; href: string; price: string | null; miles: string | null; photo: string | null }[];
+      groups: { label: string; n: number; href: string }[];
+    };
+    const options = () => Array.from(pop.querySelectorAll("[role=option]")) as unknown as HTMLAnchorElement[];
+    const close = () => {
+      pop.hidden = true;
+      input.setAttribute("aria-expanded", "false");
+      input.removeAttribute("aria-activedescendant");
+      active = -1;
+    };
+    const highlight = (i: number) => {
+      const list = options();
+      if (!list.length) return;
+      active = (i + list.length) % list.length;
+      list.forEach((o, n) => o.setAttribute("aria-selected", n === active ? "true" : "false"));
+      input.setAttribute("aria-activedescendant", list[active].id);
+      list[active].scrollIntoView({ block: "nearest" });
+    };
+    // appendChild, not append: the worker types share this file's checks.
+    const add = (parent: HTMLElement, ...kids: HTMLElement[]) => {
+      for (const k of kids) parent.appendChild(k);
+    };
+    const el = (tag: string, cls: string, text?: string) => {
+      const e = document.createElement(tag);
+      e.className = cls;
+      if (text !== undefined) e.textContent = text;
+      return e;
+    };
+    const render = (r: Result) => {
+      pop.replaceChildren();
+      active = -1;
+      let n = 0;
+      const option = (href: string) => {
+        const a = el("a", "sopt") as HTMLAnchorElement;
+        a.href = href;
+        a.id = `sopt-${n++}`;
+        a.setAttribute("role", "option");
+        a.setAttribute("aria-selected", "false");
+        a.tabIndex = -1;
+        return a;
+      };
+      if (!r.total) {
+        add(pop, el("p", "spop__empty", `No cars match "${r.q}" yet.`));
+        status.textContent = "No matches";
+      } else {
+        if (r.groups.length) {
+          add(pop, el("p", "spop__head", "Makes and models"));
+          for (const g of r.groups) {
+            const a = option(g.href);
+            a.classList.add("sopt--group");
+            add(a, el("span", "sopt__title", g.label), el("span", "sopt__n", `${g.n} ${g.n === 1 ? "car" : "cars"}`));
+            add(pop, a);
+          }
+        }
+        add(pop, el("p", "spop__head", "Cars"));
+        for (const c of r.cars) {
+          const a = option(c.href);
+          const thumb = el("span", "sopt__thumb");
+          if (c.photo) {
+            const img = document.createElement("img");
+            img.src = c.photo;
+            img.alt = "";
+            img.loading = "lazy";
+            add(thumb, img);
+          }
+          const text = el("span", "sopt__text");
+          add(text, el("span", "sopt__title", c.title), el("span", "sopt__meta", [c.price, c.miles].filter(Boolean).join(" · ")));
+          add(a, thumb, text);
+          add(pop, a);
+        }
+        const all = option(r.all);
+        all.classList.add("sopt--all");
+        all.textContent = `See all ${r.total} ${r.total === 1 ? "result" : "results"} for "${r.q}"`;
+        add(pop, all);
+        status.textContent = `${r.total} ${r.total === 1 ? "car matches" : "cars match"}`;
+      }
+      pop.hidden = false;
+      input.setAttribute("aria-expanded", "true");
+    };
+    const run = async () => {
+      const q = input.value.trim();
+      if (q.length < 2) {
+        ctrl?.abort();
+        lastQ = "";
+        close();
+        return;
+      }
+      if (q === lastQ && !pop.hidden) return;
+      ctrl?.abort();
+      ctrl = new AbortController();
+      try {
+        const res = await fetch(`${api}?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+        if (!res.ok) return;
+        const r = (await res.json()) as Result;
+        if (input.value.trim() !== q) return;
+        lastQ = q;
+        render(r);
+      } catch {
+        // Aborted or offline: the plain search still works.
+      }
+    };
+    input.addEventListener("input", () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(run, 140);
+    });
+    input.addEventListener("focus", () => {
+      if (input.value.trim().length >= 2) run();
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        if (pop.hidden) return void run();
+        e.preventDefault();
+        highlight(active + (e.key === "ArrowDown" ? 1 : -1));
+      } else if (e.key === "Enter" && !pop.hidden && active >= 0) {
+        e.preventDefault();
+        options()[active]?.click();
+      } else if (e.key === "Escape" && !pop.hidden) {
+        e.preventDefault();
+        close();
+      }
+    });
+    pop.addEventListener("mousedown", (e) => e.preventDefault());
+    document.addEventListener("click", (e) => {
+      if (!pop.hidden && !(e.target as HTMLElement).closest(".hsearch")) close();
+    });
+    input.addEventListener("blur", () => setTimeout(close, 120));
+  }
+
+  // Light and dark: the button flips the theme and remembers the choice
+  // (the head script in Base.astro applies it before the page paints).
+  const toggle = document.querySelector("[data-theme-toggle]");
+  const sync = () => {
+    const dark = document.documentElement.dataset.theme === "dark";
+    toggle?.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode");
+    toggle?.setAttribute("title", dark ? "Light mode" : "Dark mode");
+  };
+  sync();
+  toggle?.addEventListener("click", () => {
+    const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+    document.documentElement.dataset.theme = next;
+    document.querySelector('meta[name="theme-color"]')?.setAttribute("content", next === "dark" ? "#0E1013" : "#EEF0F3");
+    try {
+      localStorage.setItem("theme", next);
+    } catch {
+      // Private mode: the choice lasts for this page only.
+    }
+    sync();
+  });
+
   // "/" jumps to the search box from anywhere on the site.
   document.addEventListener("keydown", (e) => {
     const t = e.target as HTMLElement;
@@ -120,7 +313,7 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
     position: relative;
     color: var(--ink);
     font-family: var(--font-ui);
-    border-bottom: 1px solid rgba(21, 23, 27, 0.06);
+    border-bottom: 1px solid rgba(var(--ink-rgb), 0.06);
     box-shadow: 0 1px 0 rgba(255, 255, 255, 0.6) inset, 0 6px 20px rgba(21, 23, 27, 0.04);
   }
   /* The blur sits on a layer behind the bar, so the account menu inside can
@@ -136,7 +329,7 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
   }
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     .mast::before {
-      background: rgba(255, 255, 255, 0.94);
+      background: rgba(var(--hi-rgb), 0.94);
     }
   }
   .mast__inner {
@@ -165,7 +358,7 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
     height: 40px;
     border: 3px solid var(--red);
     border-radius: 50%;
-    background: var(--white);
+    background: var(--surface);
     color: var(--ink);
     font-family: var(--font-head);
     font-size: 15px;
@@ -203,9 +396,9 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
     width: 100%;
     height: 44px;
     padding: 0 52px 0 18px;
-    border: 1px solid rgba(21, 23, 27, 0.12);
+    border: 1px solid rgba(var(--ink-rgb), 0.12);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.78);
+    background: rgba(var(--hi-rgb), 0.78);
     color: var(--ink);
     font: 500 15.5px var(--font-ui);
     outline: 0;
@@ -218,10 +411,10 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
     color: #7a7e86;
   }
   .hsearch input:hover {
-    background: rgba(255, 255, 255, 0.95);
+    background: rgba(var(--hi-rgb), 0.95);
   }
   .hsearch input:focus {
-    background: var(--white);
+    background: var(--surface);
     border-color: var(--red);
     box-shadow: 0 0 0 4px rgba(213, 0, 28, 0.14);
   }
@@ -239,12 +432,129 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
     border: 0;
     border-radius: 50%;
     background: var(--ink);
-    color: var(--white);
+    color: var(--paper);
     cursor: pointer;
     transition: background-color 0.15s ease;
   }
   .hsearch__go:hover {
     background: var(--red);
+  }
+  /* Live search dropdown */
+  .hsearch__pop {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 8px);
+    z-index: 70;
+    max-height: min(70vh, 520px);
+    overflow-y: auto;
+    padding: 6px;
+    background: rgba(var(--hi-rgb), 0.97);
+    -webkit-backdrop-filter: var(--glass-blur-strong);
+    backdrop-filter: var(--glass-blur-strong);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 22px 50px rgba(21, 23, 27, 0.18);
+    animation: pop-in 0.14s ease-out;
+  }
+  .hsearch__pop[hidden] {
+    display: none;
+  }
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+    .hsearch__pop {
+      background: rgba(var(--hi-rgb), 0.97);
+    }
+  }
+  .hsearch__pop :global(.spop__head) {
+    margin: 8px 10px 4px;
+    color: var(--muted);
+    font-family: var(--font-label);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .hsearch__pop :global(.spop__empty) {
+    margin: 0;
+    padding: 14px 12px;
+    color: var(--muted);
+  }
+  .hsearch__pop :global(.sopt) {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 42px;
+    padding: 6px 10px;
+    border-radius: 10px;
+    color: var(--ink);
+    text-decoration: none;
+  }
+  .hsearch__pop :global(.sopt:hover),
+  .hsearch__pop :global(.sopt[aria-selected="true"]) {
+    background: rgba(var(--ink-rgb), 0.06);
+  }
+  .hsearch__pop :global(.sopt--group) {
+    justify-content: space-between;
+  }
+  .hsearch__pop :global(.sopt__thumb) {
+    flex: 0 0 64px;
+    height: 44px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: var(--stripes);
+  }
+  .hsearch__pop :global(.sopt__thumb img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .hsearch__pop :global(.sopt__text) {
+    display: grid;
+    min-width: 0;
+  }
+  .hsearch__pop :global(.sopt__title) {
+    font-weight: 600;
+    font-size: 14.5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .hsearch__pop :global(.sopt__meta),
+  .hsearch__pop :global(.sopt__n) {
+    color: var(--muted);
+    font-family: var(--font-label);
+    font-size: 12.5px;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .hsearch__pop :global(.sopt--all) {
+    justify-content: center;
+    margin-top: 4px;
+    border-top: 1px solid var(--hair);
+    border-radius: 0 0 10px 10px;
+    color: var(--red);
+    font-weight: 700;
+    font-size: 14px;
+  }
+  .theme {
+    width: 40px;
+    padding: 0;
+    justify-content: center;
+  }
+  .theme__sun {
+    display: none;
+  }
+  :global(:root[data-theme="dark"]) .theme__sun {
+    display: block;
+  }
+  :global(:root[data-theme="dark"]) .theme__moon {
+    display: none;
   }
   .actions {
     display: flex;
@@ -258,9 +568,9 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
     gap: 6px;
     min-height: 40px;
     padding: 8px 14px;
-    border: 1px solid rgba(21, 23, 27, 0.12);
+    border: 1px solid rgba(var(--ink-rgb), 0.12);
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.7);
+    background: rgba(var(--hi-rgb), 0.7);
     color: var(--ink);
     font-size: 13px;
     font-weight: 600;
@@ -270,12 +580,12 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
     transition: background-color 0.15s ease, border-color 0.15s ease;
   }
   .ghost:hover {
-    background: rgba(255, 255, 255, 0.95);
-    border-color: rgba(21, 23, 27, 0.22);
+    background: rgba(var(--hi-rgb), 0.95);
+    border-color: rgba(var(--ink-rgb), 0.22);
   }
   .ghost[aria-current="page"] {
-    background: var(--white);
-    border-color: rgba(21, 23, 27, 0.28);
+    background: var(--surface);
+    border-color: rgba(var(--ink-rgb), 0.28);
   }
   .sell {
     display: inline-flex;
@@ -325,8 +635,11 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
     display: none;
   }
   .menu__caret {
-    font-size: 11px;
     color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  .menu[open] .menu__caret {
+    transform: rotate(180deg);
   }
   /* Long display names are cut short so the bar never overflows. */
   .menu__name {
@@ -359,7 +672,7 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
   }
   @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
     .menu__panel {
-      background: rgba(255, 255, 255, 0.96);
+      background: rgba(var(--hi-rgb), 0.96);
     }
   }
   .menu__panel a,
@@ -382,12 +695,91 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
   }
   .menu__panel a:hover,
   .menu__panel button:hover {
-    background: rgba(21, 23, 27, 0.05);
+    background: rgba(var(--ink-rgb), 0.05);
   }
   .menu__panel form {
     margin: 4px 0 0;
     padding-top: 4px;
     border-top: 1px solid var(--hair);
+  }
+
+  /* Category menu: a slim row of Lot shortcuts under the bar. It scrolls
+     away with the page; the bar above stays. */
+  .cats {
+    border-bottom: 1px solid rgba(var(--ink-rgb), 0.05);
+    background: rgba(var(--hi-rgb), 0.34);
+  }
+  .cats__inner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    max-width: calc(var(--max) + 2 * var(--gutter));
+    margin: 0 auto;
+    padding: 0 var(--gutter);
+  }
+  .cats__list {
+    display: flex;
+    gap: 0;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-x: auto;
+    scrollbar-width: none;
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .cats__list::-webkit-scrollbar {
+    display: none;
+  }
+  .cats a {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    height: 42px;
+    padding: 0 11px;
+    color: var(--muted);
+    font-family: var(--font-label);
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: color 0.15s ease;
+  }
+  .cats a:hover {
+    color: var(--ink);
+  }
+  .cats a::after {
+    content: "";
+    position: absolute;
+    left: 11px;
+    right: 11px;
+    bottom: 0;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--red);
+    transform: scaleX(0);
+    transition: transform 0.2s ease;
+  }
+  .cats a[aria-current="page"] {
+    color: var(--ink);
+  }
+  .cats a[aria-current="page"]::after,
+  .cats a:hover::after {
+    transform: scaleX(1);
+  }
+  .cats a:hover:not([aria-current="page"])::after {
+    background: var(--line);
+  }
+  .cats__how {
+    flex: none;
+  }
+  .cats__list li:first-child a {
+    padding-left: 0;
+  }
+  .cats__list li:first-child a::after {
+    left: 0;
   }
 
   /* Narrower screens: the search takes its own row under the logo. The
@@ -435,7 +827,24 @@ const here = (p: string) => (p === url(GARAGE) ? path === p : path.startsWith(p)
       display: inline;
     }
   }
+  @media (max-width: 720px) {
+    .cats__inner {
+      padding-right: 0;
+    }
+    .cats .cats__how {
+      display: none;
+    }
+    /* Fade the right edge so the row reads as scrollable. */
+    .cats__list {
+      -webkit-mask-image: linear-gradient(90deg, #000 85%, transparent);
+      mask-image: linear-gradient(90deg, #000 85%, transparent);
+      padding-right: 32px;
+    }
+  }
   @media (max-width: 480px) {
+    .cats__inner {
+      padding-left: 16px;
+    }
     .mast__inner {
       flex-wrap: wrap;
       row-gap: 8px;

@@ -1,6 +1,7 @@
 ---
 import { eq } from "drizzle-orm";
 import Base from "../../layouts/Base.astro";
+import Crumbs from "../../components/Crumbs.astro";
 import SafetyNote from "../../components/SafetyNote.astro";
 import MessageThread from "../../components/MessageThread.tsx";
 import "../../styles/thread.css";
@@ -40,6 +41,7 @@ const offerLink = listing.slug && !isSeller && listing.status === "live" && list
 ---
 
 <Base title={`Messages: ${listingTitle(listing)}`}>
+  <Crumbs items={[{ label: "Inbox", href: url("/inbox") }, { label: listingTitle(listing) }]} />
   <div class="page-head">
     <h1 class="page-title">Inbox</h1>
   </div>

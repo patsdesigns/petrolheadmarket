@@ -9,12 +9,17 @@
 import Base from "../layouts/Base.astro";
 import { BODY_STYLES, DRIVETRAINS } from "../lib/listing-options";
 import { formatMiles, formatPrice } from "../lib/listing-rules";
-import { COLORS, SORTS, activeFilterCount, listedAgo, lotHref, norm, parseLotQuery, queryLot, type LotCard, type LotQuery } from "../lib/lot";
+import { COLORS, SORTS, activeFilterCount, lotHref, norm, parseLotQuery, queryLot, type LotCard, type LotQuery } from "../lib/lot";
 import { carUrl, url } from "../lib/paths";
+import CarCard from "../components/CarCard.astro";
+import SaveButton from "../components/SaveButton.astro";
+import { savedAmong } from "../lib/saved";
 import "../styles/lot.css";
 
 const q = parseLotQuery(Astro.url.searchParams);
 const lot = await queryLot(q);
+const signedIn = Boolean(Astro.locals.user);
+const saved = await savedAmong(Astro.locals.user?.id, lot.cards.map((c) => c.id));
 
 type Choice = { value: string; label: string };
 const moreGroups: { key: keyof LotQuery; legend: string; options: readonly Choice[]; counts: Record<string, number> }[] = [
@@ -52,13 +57,11 @@ const plain = !q.q && !anyFilter && q.sort === "new";
 const feature: LotCard | null = plain && lot.cards.length >= 4 ? lot.cards[0] : null;
 const grid = feature ? lot.cards.slice(1) : lot.cards;
 
-const owners = (n: number | null) => (n ? `${n} ${n === 1 ? "owner" : "owners"}` : "");
 const carsText = (n: number) => (n === 1 ? "1 car" : `${n.toLocaleString("en-US")} cars`);
 const miles = (n: number | null) => (n === null ? "" : `${formatMiles(n)} mi`);
 const facts = (c: LotCard) => [miles(c.mileage), c.transmission, c.location].filter(Boolean);
-// "Just listed" for three days. Computed per request (never at module scope).
+// "Just listed" (on the cards) is three days from now, computed per request.
 const now = Date.now();
-const justListed = (c: LotCard) => c.status === "live" && !!c.publishedAt && now - c.publishedAt.getTime() < 3 * 86_400_000;
 const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
 ---
 
@@ -70,8 +73,9 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
 >
   <h1 class="sr-only">Enthusiast Cars for Sale</h1>
 
-  <form class="lot" id="lot" method="get" action={url("/")} data-lot role="search" aria-label="Filter cars">
-    <div class="toolbar" role="group" aria-label="Filters">
+  <div class="lot-sentinel" data-lot-sentinel aria-hidden="true"></div>
+  <div class="lot" data-lot>
+    <form class="toolbar" id="lot" method="get" action={url("/")} role="search" aria-label="Filter cars">
       <select class:list={["chip", { "is-set": q.ymin !== null }]} name="ymin" aria-label="Year from">
         <option value="">Year From</option>
         {lot.years.map((y) => <option value={y} selected={y === q.ymin}>From {y}</option>)}
@@ -185,10 +189,11 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
       </details>
       <button class="btn btn--secondary quick__apply" type="submit">Apply</button>
       {anyFilter && <a class="lot__clear toolbar__clear" href={lotHref(q, noFilters)}>Clear filters</a>}
-    </div>
+    </form>
 
     {
       feature && (
+        <div class="feature-wrap">
         <a class="feature" href={carUrl(feature.slug)}>
           <div class="feature__photo">
             {feature.photo && (
@@ -213,6 +218,10 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
             </div>
           </div>
         </a>
+        <div class="feature-wrap__save">
+          <SaveButton listingId={feature.id} saved={saved.has(feature.id)} signedIn={signedIn} />
+        </div>
+        </div>
       )
     }
 
@@ -223,13 +232,13 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
         {
           q.q && (
             <a class="pill" href={lotHref(q, { q: "" })} aria-label={`Remove search ${q.q}`}>
-              “{q.q}” <span aria-hidden="true">✕</span>
+              “{q.q}” <svg class="pill__x" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 2l6 6M8 2L2 8" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" /></svg>
             </a>
           )
         }
         <label class="lot__sort">
           <span class="lot__sort-label">Sort</span>
-          <select name="sort">
+          <select name="sort" form="lot">
             {SORTS.map((s) => <option value={s.value} selected={s.value === q.sort}>{s.label}</option>)}
           </select>
         </label>
@@ -259,62 +268,7 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
         ) : (
           <ul class="lot__grid" role="list">
             {grid.map((c, i) => (
-              <li>
-                <a class="car-card" href={carUrl(c.slug)}>
-                  <div class="car-card__photo">
-                    {c.photo && (
-                      <img
-                        src={c.photo.url}
-                        alt=""
-                        width={c.photo.width ?? undefined}
-                        height={c.photo.height ?? undefined}
-                        loading={i < 6 ? "eager" : "lazy"}
-                        decoding="async"
-                      />
-                    )}
-                    {c.status === "offer_accepted" ? (
-                      <span class="car-card__flag car-card__flag--dark">Offer accepted</span>
-                    ) : justListed(c) ? (
-                      <span class="car-card__flag">Just listed</span>
-                    ) : null}
-                    <span class="car-card__price">{formatPrice(c.price)}</span>
-                    {c.photoCount > 0 && (
-                      <span class="car-card__count">
-                        <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
-                          <path
-                            d="M4 8h3l2-3h6l2 3h3v11H4z"
-                            fill="none"
-                            stroke="currentColor"
-                            stroke-width="2"
-                            stroke-linejoin="round"
-                          />
-                          <circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="2" />
-                        </svg>
-                        {c.photoCount}
-                        <span class="sr-only"> photos</span>
-                      </span>
-                    )}
-                  </div>
-                  <div class="car-card__body">
-                    <h3 class="car-card__title">{c.title}</h3>
-                    {c.headline && <p class="car-card__headline">{c.headline}</p>}
-                    <p class="car-card__facts">
-                      {facts(c).map((f) => (
-                        <span>{f}</span>
-                      ))}
-                    </p>
-                    <div class="car-card__meta">
-                      <span class="car-card__badges">
-                        {c.recordsOnFile && <span class="badge badge--ok">Records</span>}
-                        {c.ownerCount ? <span class="badge">{owners(c.ownerCount)}</span> : null}
-                        {c.acceptsOffers && c.status === "live" && <span class="badge">Offers</span>}
-                        {c.verifiedSeller && <span class="badge">Verified seller</span>}
-                      </span>
-                      <span class="car-card__ago">{listedAgo(c.publishedAt)}</span>
-                    </div>
-                  </div>
-                </a>
-              </li>
+              <CarCard card={c} eager={i < 6} saved={saved.has(c.id)} signedIn={signedIn} now={now} />
             ))}
           </ul>
         )
@@ -335,18 +289,79 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
         )
       }
     </section>
-  </form>
+  </div>
 </Base>
 
 <script>
-  // The quick filters and sort apply as soon as they change; More filters
-  // applies with its button. Without this script the Apply buttons submit.
-  const form = document.querySelector<HTMLFormElement>("[data-lot]");
-  const more = document.querySelector<HTMLDetailsElement>("[data-more]");
-  if (form) {
-    form.classList.add("is-live");
+  // The Lot without full reloads: the chips and sort apply as soon as they
+  // change, More filters with its button, and the page swaps in the new
+  // results in place (the address updates, Back and Forward work). Without
+  // this script it is a plain GET form and the Apply buttons submit.
+  // The filter form (#lot) holds only the chips; the sort menu and the
+  // header search join it with form="lot". The whole Lot (.lot) is swapped.
+  const lotForm = () => document.getElementById("lot") as HTMLFormElement | null;
+  const lotRoot = () => document.querySelector("[data-lot]") as HTMLElement | null;
+  const moreBox = () => document.querySelector("[data-more]") as HTMLDetailsElement | null;
+  const form = lotRoot();
+  if (form && lotForm()) {
+    let loading: AbortController | null = null;
+
+    const swap = (next: Document) => {
+      const fresh = next.querySelector("[data-lot]");
+      const now = lotRoot();
+      const keep = lotForm();
+      const freshForm = next.getElementById("lot");
+      if (!fresh || !now || !keep || !freshForm) return false;
+      // Keep the filter form element itself (the header search and the sort
+      // menu belong to it by form="lot") and swap what is inside it.
+      keep.replaceChildren(...(Array.from(freshForm.childNodes) as unknown as Node[]));
+      now.replaceChildren(...(Array.from(fresh.childNodes).map((n) => (n === freshForm ? keep : n)) as unknown as Node[]));
+      now.classList.add("is-live");
+      const cats = document.querySelector(".cats");
+      const freshCats = next.querySelector(".cats");
+      if (cats && freshCats) cats.replaceWith(freshCats);
+      document.title = next.title;
+      const search = document.getElementById("site-q") as HTMLInputElement | null;
+      const freshSearch = next.getElementById("site-q") as HTMLInputElement | null;
+      if (search && freshSearch && document.activeElement !== search) search.value = freshSearch.value;
+      return true;
+    };
+
+    // Fetch a Lot address and swap it in; push it to the history unless this
+    // is Back or Forward.
+    const load = async (href: string, push: boolean) => {
+      loading?.abort();
+      loading = new AbortController();
+      const now = lotRoot();
+      now?.classList.add("is-loading");
+      now?.setAttribute("aria-busy", "true");
+      try {
+        const res = await fetch(href, { headers: { Accept: "text/html" }, signal: loading.signal });
+        if (!res.ok) throw new Error(String(res.status));
+        const next = new DOMParser().parseFromString(await res.text(), "text/html");
+        const doSwap = () => {
+          if (!swap(next)) window.location.href = href;
+        };
+        const vt = (document as unknown as { startViewTransition?: (cb: () => void) => { updateCallbackDone: Promise<void> } })
+          .startViewTransition;
+        if (vt && !matchMedia("(prefers-reduced-motion: reduce)").matches) await vt.call(document, doSwap).updateCallbackDone;
+        else doSwap();
+        if (push) history.pushState({ lot: true }, "", href);
+        // Back to the top of the results if the page was scrolled past them.
+        const top = lotRoot()?.getBoundingClientRect().top ?? 0;
+        if (top < 0) window.scrollTo({ top: Math.max(0, window.scrollY + top - 90) });
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") window.location.href = href;
+      } finally {
+        const after = lotRoot();
+        after?.classList.remove("is-loading");
+        after?.removeAttribute("aria-busy");
+      }
+    };
+
     // Only send the fields that are set, so the address stays short.
-    form.addEventListener("formdata", (e) => {
+    document.addEventListener("formdata", (e) => {
+      if (e.target !== lotForm()) return;
       // Typed prices and miles go without "$" and commas ("$25,000" is 25000).
       const clean = ([k, v]: [string, FormDataEntryValue]): [string, FormDataEntryValue] =>
         /_(min|max)$/.test(k) && typeof v === "string" ? [k, v.replace(/[$,\s]/g, "")] : [k, v];
@@ -354,10 +369,25 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
       for (const k of new Set([...e.formData.keys()])) e.formData.delete(k);
       for (const [k, v] of keep) e.formData.append(k, v);
     });
-    form.addEventListener("change", (e) => {
+
+    document.addEventListener("submit", (e) => {
+      const f = lotForm();
+      if (e.target !== f || !f) return;
+      e.preventDefault();
+      const params = new URLSearchParams(new FormData(f) as unknown as Record<string, string>);
+      const str = params.toString();
+      const more = moreBox();
+      if (more) more.open = false;
+      (document.getElementById("site-q") as HTMLInputElement | null)?.blur();
+      load(str ? `${f.action}?${str}` : f.action, true);
+    });
+
+    document.addEventListener("change", (e) => {
       const t = e.target as HTMLInputElement;
+      const f = lotForm();
+      if (!f || t.form !== f) return;
       // More filters (and the search box) apply with their buttons.
-      if (t.name === "q" || more?.contains(t)) return;
+      if (t.name === "q" || moreBox()?.contains(t)) return;
       // A new make starts with all of its models, a new model with all of its trims.
       const clear = (id: string) => {
         const sel = document.getElementById(id) as HTMLSelectElement | null;
@@ -365,8 +395,25 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
       };
       if (t.name === "make") clear("qf-model");
       if (t.name === "make" || t.name === "model") clear("qf-trim");
-      form.requestSubmit();
+      f.requestSubmit();
     });
+
+    // Links inside the Lot that only change its filters (Clear filters, the
+    // search pill, the menu shortcuts) swap in place too.
+    document.addEventListener("click", (e) => {
+      if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      const link = (e.target as HTMLElement).closest?.("a") as HTMLAnchorElement | null;
+      if (!link || link.hasAttribute("data-show-more")) return;
+      const to = new URL(link.href, location.href);
+      if (to.origin !== location.origin || to.pathname !== location.pathname || link.target) return;
+      if (!link.closest("[data-lot], .cats")) return;
+      e.preventDefault();
+      load(to.href, true);
+    });
+
+    window.addEventListener("popstate", () => load(location.href, false));
+    history.replaceState({ lot: true }, "");
+
     // Show more: fetch the next address (which renders every car so far) and
     // add the cards this page does not have yet. Without the script the link
     // simply opens that address.
@@ -383,17 +430,22 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
         const grid = document.querySelector(".lot__grid");
         const have = grid ? grid.children.length : 0;
         const incoming = Array.from(next.querySelector(".lot__grid")?.children ?? []).slice(have) as unknown as HTMLElement[];
-        for (const el of incoming) grid?.appendChild(el);
+        for (const el of incoming) {
+          el.classList.add("is-new");
+          grid?.appendChild(el);
+        }
         const box = document.querySelector("[data-more-cars]");
         const fresh = next.querySelector("[data-more-cars]");
         if (box && fresh) box.replaceWith(fresh);
-        history.replaceState(null, "", link.href);
+        history.replaceState({ lot: true }, "", link.href);
         (incoming[0]?.querySelector("a") as HTMLAnchorElement | null)?.focus({ preventScroll: true });
       } catch {
         window.location.href = link.href;
       }
     });
+
     document.addEventListener("keydown", (e) => {
+      const more = moreBox();
       if (e.key === "Escape" && more?.open) {
         more.open = false;
         more.querySelector("summary")?.focus();
@@ -402,7 +454,73 @@ const pageTitle = q.q ? `Search: ${q.q}` : "Enthusiast Cars for Sale";
     // More filters closes when you click outside it (on phones, the dimmed
     // backdrop is the details element itself).
     document.addEventListener("click", (e) => {
+      const more = moreBox();
       if (more?.open && (e.target === more || !more.contains(e.target as Node))) more.open = false;
     });
+
+    // Photo scrub: moving the pointer across a card's photo flips through its
+    // first few photos (pointers that hover only).
+    if (matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      const warmed = new WeakSet<Element>();
+      document.addEventListener("pointermove", (e) => {
+        const box = (e.target as HTMLElement).closest?.("[data-photos]") as HTMLElement | null;
+        if (!box) return;
+        const img = box.querySelector("img");
+        if (!img) return;
+        const list = JSON.parse(box.dataset.photos ?? "[]") as string[];
+        if (!warmed.has(box)) {
+          warmed.add(box);
+          for (const src of list.slice(1)) new Image().src = src;
+        }
+        const r = box.getBoundingClientRect();
+        const i = Math.min(list.length - 1, Math.max(0, Math.floor(((e.clientX - r.left) / r.width) * list.length)));
+        if (img.getAttribute("src") !== list[i]) img.setAttribute("src", list[i]);
+        box.querySelectorAll(".car-card__dots span").forEach((d, n) => d.classList.toggle("on", n === i));
+      });
+      document.addEventListener(
+        "pointerout",
+        (e) => {
+          const box = (e.target as HTMLElement).closest?.("[data-photos]") as HTMLElement | null;
+          if (!box || box.contains(e.relatedTarget as Node)) return;
+          const list = JSON.parse(box.dataset.photos ?? "[]") as string[];
+          box.querySelector("img")?.setAttribute("src", list[0]);
+          box.querySelectorAll(".car-card__dots span").forEach((d, n) => d.classList.toggle("on", n === 0));
+        },
+        true,
+      );
+    }
+
+    // Photos fade in once loaded (and the shimmer stops).
+    const markLoaded = () =>
+      document.querySelectorAll(".car-card__photo img, .feature__photo img").forEach((img) => {
+        if ((img as HTMLImageElement).complete) img.parentElement?.classList.add("has-img");
+      });
+    const onImg = (e: Event) => {
+      const t = e.target as HTMLElement;
+      if (t.tagName === "IMG") t.parentElement?.classList.add("has-img");
+    };
+    document.addEventListener("load", onImg, true);
+    document.addEventListener("error", onImg, true);
+    new MutationObserver(markLoaded).observe(form, { childList: true, subtree: true });
+    markLoaded();
+
+    // The filter bar gets its glass strip once it sticks under the header.
+    const sentinel = document.querySelector("[data-lot-sentinel]");
+    if (sentinel && "IntersectionObserver" in window) {
+      const headerH = parseInt(getComputedStyle(document.documentElement).getPropertyValue("--header-h")) || 64;
+      const sticky = () => (matchMedia("(max-width: 720px)").matches ? 0 : headerH + 10);
+      let io: IntersectionObserver | null = null;
+      const watch = () => {
+        io?.disconnect();
+        io = new IntersectionObserver(([entry]) => form.classList.toggle("bar-stuck", !entry.isIntersecting && entry.boundingClientRect.top < sticky() + 30), {
+          rootMargin: `-${sticky() + 30}px 0px 0px 0px`,
+        });
+        io.observe(sentinel);
+      };
+      watch();
+      matchMedia("(max-width: 720px)").addEventListener("change", watch);
+    }
+
+    form.classList.add("is-live");
   }
 </script>

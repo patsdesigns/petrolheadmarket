@@ -1,16 +1,17 @@
 ---
 import { z } from "zod";
 import Base from "../layouts/Base.astro";
+import Crumbs from "../components/Crumbs.astro";
 import Field from "../components/Field.astro";
 import Notice from "../components/Notice.astro";
 import CarSummary from "../components/CarSummary.astro";
-import { url } from "../lib/paths";
+import { url, carUrl } from "../lib/paths";
 import { parseForm } from "../lib/forms";
 import { getPublicListing, isAppSlug, slugFromReferer, validSlug } from "../lib/public-listing";
 import NotOnApp from "../components/NotOnApp.astro";
 import { createOffer, expireStaleOffers, minOffer, openOfferFor, OFFER_HOURS } from "../lib/offers";
 import { offerRateLimited } from "../lib/rate-limit";
-import { formatPrice } from "../lib/listing-rules";
+import { formatPrice, listingTitle } from "../lib/listing-rules";
 import { canTransact, publicOrigin } from "../lib/config";
 import type { Listing } from "../db/schema";
 
@@ -78,7 +79,7 @@ if (found && Astro.request.method === "POST" && !isOwn && !closed) {
     <NotOnApp reason={notOpen ?? "missing"} slug={slug} action="offer" />
   ) : (
   <>
-  <a class="back" href={url("/offers")}>← Offers</a>
+  <Crumbs items={[{ label: "The Lot", href: url("/") }, { label: listingTitle(found.listing), href: carUrl(found.listing.slug!) }, { label: "Make an Offer" }]} />
   <h1 class="page-title">Make an Offer</h1>
   <div class="split">
   <CarSummary {...found} size="large" />

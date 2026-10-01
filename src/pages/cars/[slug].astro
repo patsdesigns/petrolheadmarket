@@ -5,6 +5,9 @@ import { SITE_NAME } from "../../lib/brand";
 // cars have a page; sold ones show as sold with no buttons.
 import { and, eq, inArray } from "drizzle-orm";
 import Base from "../../layouts/Base.astro";
+import Crumbs from "../../components/Crumbs.astro";
+import SaveButton from "../../components/SaveButton.astro";
+import { savedAmong } from "../../lib/saved";
 import { getDb } from "../../db/client";
 import { listings, profiles } from "../../db/schema";
 import { BODY_STYLES, DRIVETRAINS, TITLE_STATUSES, TRANSMISSIONS, optionLabel } from "../../lib/listing-options";
@@ -29,8 +32,13 @@ if (!listing) {
   return Astro.rewrite(url("/404"));
 }
 
-const photos = (await getPhotos(listing.id)).map(photoView);
-const seller = await getDb().select().from(profiles).where(eq(profiles.userId, listing.userId)).get();
+const [photoRows, seller, savedSet] = await Promise.all([
+  getPhotos(listing.id),
+  getDb().select().from(profiles).where(eq(profiles.userId, listing.userId)).get(),
+  savedAmong(Astro.locals.user?.id, [listing.id]),
+]);
+const isSaved = savedSet.has(listing.id);
+const photos = photoRows.map(photoView);
 const sellerName = seller?.displayName ?? "Private seller";
 const title = listingTitle(listing);
 const location = [listing.locationCity, listing.locationState].filter(Boolean).join(", ");
@@ -72,6 +80,26 @@ const statusNote = isSold
     ? "The seller accepted an offer. If the deal falls through the car comes back on sale, so you can still message the seller."
     : null;
 
+// Breadcrumbs: the Lot, then the make and model as Lot filters.
+const crumbs = [
+  { label: "The Lot", href: url("/") },
+  ...(listing.make ? [{ label: listing.make, href: url(`/?make=${encodeURIComponent(listing.make)}`) }] : []),
+  ...(listing.make && listing.model
+    ? [{ label: listing.model, href: url(`/?make=${encodeURIComponent(listing.make)}&model=${encodeURIComponent(listing.model)}`) }]
+    : []),
+  { label: title },
+];
+const crumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: crumbs.map((c, i) => ({
+    "@type": "ListItem",
+    position: i + 1,
+    name: c.label,
+    item: new URL(c.href ?? Astro.url.pathname, Astro.url).toString(),
+  })),
+};
+
 // Search engines: a Vehicle with its asking price.
 const jsonLd = {
   "@context": "https://schema.org",
@@ -100,7 +128,8 @@ const jsonLd = {
   image={photos[0]?.url ?? null}
 >
   <script type="application/ld+json" set:html={JSON.stringify(jsonLd).replace(/</g, "\\u003c")} />
-  <a class="back" href={url("/")}>← Back to the Lot</a>
+  <script type="application/ld+json" set:html={JSON.stringify(crumbLd).replace(/</g, "\\u003c")} />
+  <Crumbs items={crumbs} />
   <p class="eyebrow">
     {location && <span>{location}</span>}
     <span>{listedAgo(listing.publishedAt)}</span>
@@ -218,6 +247,9 @@ const jsonLd = {
             <>
               {canOffer && <a class="btn buy__btn" href={`${url("/offer")}${q}`}>Make an offer</a>}
               {canMessage && <a class:list={["btn buy__btn", { "btn--secondary": canOffer }]} href={`${url("/message")}${q}`}>Message the seller</a>}
+              <div class="buy__btn">
+                <SaveButton listingId={listing.id} saved={isSaved} signedIn={Boolean(Astro.locals.user)} variant="full" />
+              </div>
             </>
           )
         }

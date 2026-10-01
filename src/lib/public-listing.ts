@@ -15,14 +15,16 @@ export async function getPublicListing(slug: string | null) {
     .where(and(eq(listings.slug, slug), inArray(listings.status, [...PUBLIC_STATUSES])))
     .get();
   if (!listing) return null;
-  const main = await db
-    .select({ r2Key: listingPhotos.r2Key })
-    .from(listingPhotos)
-    .where(eq(listingPhotos.listingId, listing.id))
-    .orderBy(asc(listingPhotos.position))
-    .limit(1)
-    .get();
-  const seller = await db.select().from(profiles).where(eq(profiles.userId, listing.userId)).get();
+  const [main, seller] = await Promise.all([
+    db
+      .select({ r2Key: listingPhotos.r2Key })
+      .from(listingPhotos)
+      .where(eq(listingPhotos.listingId, listing.id))
+      .orderBy(asc(listingPhotos.position))
+      .limit(1)
+      .get(),
+    db.select().from(profiles).where(eq(profiles.userId, listing.userId)).get(),
+  ]);
   return {
     listing,
     mainPhoto: main ? photoUrl(main.r2Key) : null,

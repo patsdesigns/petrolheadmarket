@@ -1,9 +1,10 @@
 ---
 import { z } from "zod";
 import Base from "../layouts/Base.astro";
+import Crumbs from "../components/Crumbs.astro";
 import Notice from "../components/Notice.astro";
 import StatusBadge from "../components/StatusBadge.astro";
-import { url, carUrl } from "../lib/paths";
+import { url, carUrl, GARAGE } from "../lib/paths";
 import { formatPrice, listingTitle } from "../lib/listing-rules";
 import {
   acceptOffer,
@@ -138,6 +139,7 @@ const waitingOnMe = (t: OfferThread) =>
 ---
 
 <Base title="Offers">
+  <Crumbs items={[{ label: "My Garage", href: url(GARAGE) }, { label: "Offers" }]} />
   <div class="page-head">
     <div>
       <h1 class="page-title">Offers</h1>

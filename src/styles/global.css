@@ -1,6 +1,13 @@
 /* Design tokens: the glass design used across the whole site
    (see CLAUDE.md, Design). */
 :root {
+  color-scheme: light;
+  /* RGB triplets for tints that flip in dark mode: ink tints (hover rows,
+     hairlines) and the white of glass and inputs. */
+  --ink-rgb: 21, 23, 27;
+  --hi-rgb: 255, 255, 255;
+  /* Solid surfaces (inputs on focus, chips with a value, menus). */
+  --surface: #ffffff;
   --ink: #15171b;
   --red: #d5001c;
   --red-dark: #b00017;
@@ -57,6 +64,55 @@
     linear-gradient(180deg, #f5f6f8 0%, #e9ecf0 100%);
 }
 
+/* Dark mode: the same glass, smoked. The theme script in Base.astro sets
+   data-theme on <html> from the visitor's choice or the system setting. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ink-rgb: 236, 238, 241;
+  --hi-rgb: 32, 35, 41;
+  --surface: #23272e;
+  --ink: #eceef1;
+  --red: #e8142f;
+  --red-dark: #c80d25;
+  --red-tint: rgba(232, 20, 47, 0.14);
+  --paper: #0e1013;
+  --line: rgba(236, 238, 241, 0.14);
+  --hair: rgba(236, 238, 241, 0.08);
+  --tint: rgba(236, 238, 241, 0.05);
+  --muted: #a1a6af;
+  --ok: #5fcf8f;
+  --ok-bg: rgba(95, 207, 143, 0.14);
+  --ok-line: rgba(95, 207, 143, 0.3);
+  --line-dark: rgba(236, 238, 241, 0.14);
+  --badge-bg: rgba(236, 238, 241, 0.08);
+  --body-ink: #d3d6db;
+  --stripes: linear-gradient(135deg, #262a31, #1a1d22);
+  --focus: 0 0 0 3px var(--paper), 0 0 0 5px var(--red);
+  --glass: rgba(30, 33, 39, 0.62);
+  --glass-strong: rgba(24, 27, 32, 0.8);
+  --glass-dark: rgba(6, 7, 9, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 1px 2px rgba(0, 0, 0, 0.3), 0 10px 30px rgba(0, 0, 0, 0.3);
+  --glass-shadow-lift: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 2px 4px rgba(0, 0, 0, 0.3), 0 16px 40px rgba(0, 0, 0, 0.45);
+  --backdrop: radial-gradient(1100px 620px at 8% -8%, rgba(213, 0, 28, 0.14), transparent 60%),
+    radial-gradient(900px 560px at 100% 0%, rgba(96, 118, 150, 0.16), transparent 62%),
+    linear-gradient(180deg, #121418 0%, #0b0c0f 100%);
+}
+:root[data-theme="dark"] img {
+  /* Photos a touch softer on a dark page. */
+  filter: brightness(0.94);
+}
+:root[data-theme="dark"] .trust {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root[data-theme="dark"] .glass,
+  :root[data-theme="dark"] .card,
+  :root[data-theme="dark"] .table {
+    background: rgba(30, 33, 39, 0.96);
+  }
+}
+
 *,
 *::before,
 *::after {
@@ -103,7 +159,7 @@ body::before {
   .glass,
   .card,
   .table {
-    background: rgba(255, 255, 255, 0.92);
+    background: rgba(var(--hi-rgb), 0.92);
   }
 }
 
@@ -123,7 +179,21 @@ a {
   border-radius: 4px;
 }
 
+/* Smooth page changes: the page cross-fades while the header stays put
+   (browsers without cross-document view transitions just navigate). */
+@view-transition {
+  navigation: auto;
+}
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 180ms;
+  animation-timing-function: ease-out;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  @view-transition {
+    navigation: none;
+  }
   *,
   *::before,
   *::after {
@@ -139,7 +209,7 @@ a {
   left: -9999px;
   top: 8px;
   z-index: 100;
-  background: var(--white);
+  background: var(--surface);
   padding: 8px 12px;
   border-radius: var(--radius-btn);
   box-shadow: var(--glass-shadow);
@@ -372,16 +442,16 @@ a.card:hover,
   box-shadow: var(--focus);
 }
 .btn--secondary {
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(var(--hi-rgb), 0.7);
   -webkit-backdrop-filter: blur(12px) saturate(160%);
   backdrop-filter: blur(12px) saturate(160%);
   color: var(--ink);
-  border-color: rgba(21, 23, 27, 0.12);
+  border-color: rgba(var(--ink-rgb), 0.12);
   box-shadow: 0 1px 2px rgba(21, 23, 27, 0.05);
 }
 .btn--secondary:hover {
-  background: rgba(255, 255, 255, 0.92);
-  border-color: rgba(21, 23, 27, 0.22);
+  background: rgba(var(--hi-rgb), 0.92);
+  border-color: rgba(var(--ink-rgb), 0.22);
 }
 .btn[disabled] {
   opacity: 0.5;
@@ -408,10 +478,10 @@ a.card:hover,
   font: inherit;
   font-size: 17px;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.7);
+  background: rgba(var(--hi-rgb), 0.7);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(21, 23, 27, 0.12);
+  border: 1px solid rgba(var(--ink-rgb), 0.12);
   border-radius: var(--radius-btn);
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -578,7 +648,7 @@ a.stat.is-alert:hover {
   color: var(--muted);
   padding: 14px 16px 12px;
   border-bottom: 1px solid var(--hair);
-  background: rgba(255, 255, 255, 0.35);
+  background: rgba(var(--hi-rgb), 0.35);
 }
 .table td {
   padding: 14px 16px;
@@ -589,7 +659,7 @@ a.stat.is-alert:hover {
   border-bottom: 0;
 }
 .table tbody tr:hover {
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(var(--hi-rgb), 0.45);
 }
 .table .num {
   font-family: var(--font-label);
@@ -642,7 +712,7 @@ a.stat.is-alert:hover {
 }
 .fact {
   padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(var(--hi-rgb), 0.78);
   min-width: 0;
 }
 .fact__label {
@@ -729,15 +799,40 @@ a.stat.is-alert:hover {
 }
 
 /* Footer */
+.muted {
+  color: var(--muted);
+}
 .site-foot {
-  margin: 30px auto 0;
-  padding: 0 16px 28px;
+  margin: 40px auto 0;
+  padding: 24px 16px 28px;
+  border-top: 1px solid var(--hair);
+  max-width: calc(var(--max) + 2 * var(--gutter));
   color: var(--muted);
   font-family: var(--font-label);
   font-size: 11px;
   text-align: center;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.site-foot p {
+  margin: 0;
+}
+.site-foot__links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 22px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.site-foot__links a {
+  color: var(--ink);
+  text-decoration: none;
+}
+.site-foot__links a:hover {
+  color: var(--red);
 }
 
 /* Text for screen readers only */
@@ -772,5 +867,5 @@ a.stat.is-alert:hover {
   color: var(--muted);
 }
 .pill:hover {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(var(--hi-rgb), 0.92);
 }

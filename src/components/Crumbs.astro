@@ -1,0 +1,94 @@
+---
+// Breadcrumb bar: where this page sits in the site. The last item is the
+// current page (no link). Separators are slashes drawn in CSS, not arrows.
+export interface Crumb {
+  label: string;
+  href?: string;
+}
+interface Props {
+  items: Crumb[];
+}
+const { items } = Astro.props;
+---
+
+<nav class="crumbs" aria-label="Breadcrumb">
+  <ol>
+    {
+      items.map((c, i) =>
+        c.href && i < items.length - 1 ? (
+          <li><a href={c.href}>{c.label}</a></li>
+        ) : (
+          <li aria-current="page">{c.label}</li>
+        ),
+      )
+    }
+  </ol>
+</nav>
+
+<style>
+  .crumbs {
+    margin: 0 0 16px;
+    max-width: 100%;
+  }
+  .crumbs ol {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px 0;
+    max-width: 100%;
+    margin: 0;
+    padding: 6px 14px;
+    list-style: none;
+    border: 1px solid var(--glass-border);
+    border-radius: 999px;
+    background: var(--glass);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+    box-shadow: var(--glass-shadow);
+    font-family: var(--font-label);
+    font-size: 12.5px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .crumbs li {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+  }
+  .crumbs li + li::before {
+    content: "/";
+    margin: 0 10px;
+    color: var(--line);
+    font-weight: 400;
+  }
+  .crumbs a {
+    color: var(--muted);
+    text-decoration: none;
+    border-radius: 4px;
+    transition: color 0.15s ease;
+  }
+  .crumbs a:hover {
+    color: var(--red);
+  }
+  .crumbs [aria-current="page"] {
+    color: var(--ink);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 40ch;
+  }
+  @media (max-width: 480px) {
+    .crumbs ol {
+      font-size: 11.5px;
+      padding: 6px 12px;
+    }
+    .crumbs li + li::before {
+      margin: 0 7px;
+    }
+    .crumbs [aria-current="page"] {
+      max-width: 22ch;
+    }
+  }
+</style>

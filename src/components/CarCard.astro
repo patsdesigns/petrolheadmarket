@@ -1,0 +1,92 @@
+---
+// One car on the Lot (and on Saved Cars): photo with a glass price tag, the
+// heart, then title, headline, facts and badges.
+import SaveButton from "./SaveButton.astro";
+import { formatMiles, formatPrice } from "../lib/listing-rules";
+import { listedAgo, type LotCard } from "../lib/lot";
+import { carUrl } from "../lib/paths";
+
+interface Props {
+  card: LotCard;
+  eager?: boolean;
+  saved: boolean;
+  signedIn: boolean;
+  /** The request time, for "Just listed" (never computed at module scope). */
+  now: number;
+}
+const { card: c, eager = false, saved, signedIn, now } = Astro.props;
+const owners = (n: number | null) => (n ? `${n} ${n === 1 ? "owner" : "owners"}` : "");
+const miles = (n: number | null) => (n === null ? "" : `${formatMiles(n)} mi`);
+const facts = [miles(c.mileage), c.transmission, c.location].filter(Boolean);
+const justListed = c.status === "live" && !!c.publishedAt && now - c.publishedAt.getTime() < 3 * 86_400_000;
+---
+
+<li class="lot-item">
+                <a class="car-card" href={carUrl(c.slug)}>
+                  <div
+                    class="car-card__photo"
+                    data-photos={c.photo && c.more.length ? JSON.stringify([c.photo.url, ...c.more]) : undefined}
+                  >
+                    {c.photo && c.more.length > 0 && (
+                      <span class="car-card__dots" aria-hidden="true">
+                        {[c.photo.url, ...c.more].map((_, n) => <span class:list={{ on: n === 0 }} />)}
+                      </span>
+                    )}
+                    {c.photo && (
+                      <img
+                        src={c.photo.url}
+                        alt=""
+                        width={c.photo.width ?? undefined}
+                        height={c.photo.height ?? undefined}
+                        loading={eager ? "eager" : "lazy"}
+                        decoding="async"
+                      />
+                    )}
+                    {c.status === "sold" ? (
+                      <span class="car-card__flag car-card__flag--dark">Sold</span>
+                    ) : c.status === "offer_accepted" ? (
+                      <span class="car-card__flag car-card__flag--dark">Offer accepted</span>
+                    ) : justListed ? (
+                      <span class="car-card__flag">Just listed</span>
+                    ) : null}
+                    <span class="car-card__price">{formatPrice(c.price)}</span>
+                    {c.photoCount > 0 && (
+                      <span class="car-card__count">
+                        <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true">
+                          <path
+                            d="M4 8h3l2-3h6l2 3h3v11H4z"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linejoin="round"
+                          />
+                          <circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="2" />
+                        </svg>
+                        {c.photoCount}
+                        <span class="sr-only"> photos</span>
+                      </span>
+                    )}
+                  </div>
+                  <div class="car-card__body">
+                    <h3 class="car-card__title">{c.title}</h3>
+                    {c.headline && <p class="car-card__headline">{c.headline}</p>}
+                    <p class="car-card__facts">
+                      {facts.map((f) => (
+                        <span>{f}</span>
+                      ))}
+                    </p>
+                    <div class="car-card__meta">
+                      <span class="car-card__badges">
+                        {c.recordsOnFile && <span class="badge badge--ok">Records</span>}
+                        {c.ownerCount ? <span class="badge">{owners(c.ownerCount)}</span> : null}
+                        {c.acceptsOffers && c.status === "live" && <span class="badge">Offers</span>}
+                        {c.verifiedSeller && <span class="badge">Verified seller</span>}
+                      </span>
+                      <span class="car-card__ago">{listedAgo(c.publishedAt)}</span>
+                    </div>
+                  </div>
+                </a>
+                <div class="lot-item__save">
+    <SaveButton listingId={c.id} saved={saved} signedIn={signedIn} />
+  </div>
+</li>

@@ -1,7 +1,7 @@
 // Drizzle schema for the D1 database (binding DB).
 // After changing this file run `npm run db:generate` and commit ./drizzle.
 import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, index, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, index, uniqueIndex, primaryKey } from "drizzle-orm/sqlite-core";
 import { user } from "./auth-schema";
 
 // Better Auth's own tables (user, session, account, verification, rate_limit).
@@ -285,3 +285,18 @@ export const contactRequests = sqliteTable(
 );
 
 export type ContactRequest = typeof contactRequests.$inferSelect;
+
+// Cars a member saved (the heart on the Lot and car pages), listed on /saved.
+export const savedCars = sqliteTable(
+  "saved_cars",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    listingId: text("listing_id")
+      .notNull()
+      .references(() => listings.id, { onDelete: "cascade" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.listingId] }), index("saved_cars_user_idx").on(t.userId, t.createdAt)],
+);

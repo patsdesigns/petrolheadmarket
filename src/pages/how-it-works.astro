@@ -1,0 +1,219 @@
+---
+import { SITE_NAME } from "../lib/brand";
+import Base from "../layouts/Base.astro";
+import Crumbs from "../components/Crumbs.astro";
+import { url } from "../lib/paths";
+import { contactHref } from "../lib/contact";
+import { MIN_DESCRIPTION, MIN_PHOTOS } from "../lib/listing-options";
+import { OFFER_HOURS } from "../lib/offers";
+
+const contact = contactHref("other", { subject: "A question" });
+
+const selling = [
+  ["List your car", `Tell us about the car, add at least ${MIN_PHOTOS} photos and write its story. Your draft saves as you type, so you can finish later.`],
+  ["A person reviews it", "Someone on our team reads every listing before it goes live. If anything is missing we tell you exactly what to change."],
+  ["Buyers make offers", `Set a fixed price and choose whether to take offers. You can accept, counter or decline, and offers expire after ${OFFER_HOURS} hours.`],
+  ["Agree the deal", "Accept an offer and you both get each other's contact details. Meet, inspect, sign the title, done."],
+];
+const buying = [
+  ["Browse the Lot", "Every car on the Lot was checked by a person: enthusiast cars only, honest photos, known issues written down."],
+  ["Ask the seller", "Message the seller here. Your email stays private until you agree a deal."],
+  ["Make an offer", "Offer what the car is worth to you. The seller can accept, counter or decline."],
+  ["See it in person", "Once the seller accepts, you get their contact details. See the car and the title before any money changes hands."],
+];
+const checks = [
+  `At least ${MIN_PHOTOS} photos, with the best one first`,
+  "Year, make, model, mileage, transmission and location",
+  "Title status, and the state it is titled in",
+  "A VIN for cars from 1981 on",
+  `A real description of at least ${MIN_DESCRIPTION} characters`,
+  "Known issues, written down honestly",
+];
+const faq = [
+  ["Does it cost anything?", "Listing is free for now, and buying never costs anything here."],
+  ["Are there auctions?", "No. Every car has a fixed asking price, and most sellers take offers."],
+  ["What cars belong here?", "Cars people care about: sports cars, classics, track toys, wagons and trucks with character. No junk cars, no flips with hidden problems."],
+  ["How do I pay?", "You pay the seller directly once you have seen the car and the title. We never ask you to wire money or pay a shipping agent."],
+];
+---
+
+<Base title="How It Works" index description={`How buying and selling enthusiast cars works on ${SITE_NAME}: every listing reviewed by a person, fixed prices and offers, no auctions.`}>
+  <Crumbs items={[{ label: "The Lot", href: url("/") }, { label: "How It Works" }]} />
+  <header class="hiw-hero">
+    <h1 class="page-title">How It Works</h1>
+    <p class="lede">Fixed prices and offers, no auctions. Every listing is read by a person before it goes live, so the Lot stays worth browsing.</p>
+  </header>
+
+  <div class="hiw-cols">
+    <section class="card hiw-col" id="selling" aria-labelledby="h-sell">
+      <p class="label">For sellers</p>
+      <h2 class="section-title" id="h-sell">Sell Your Car</h2>
+      <ol class="hiw-steps">
+        {selling.map(([t, d], i) => (
+          <li><span class="hiw-n">{String(i + 1).padStart(2, "0")}</span><div><h3>{t}</h3><p>{d}</p></div></li>
+        ))}
+      </ol>
+      <a class="btn" href={url("/sell")}>Start a listing</a>
+    </section>
+    <section class="card hiw-col" id="buying" aria-labelledby="h-buy">
+      <p class="label">For buyers</p>
+      <h2 class="section-title" id="h-buy">Buy a Car</h2>
+      <ol class="hiw-steps">
+        {buying.map(([t, d], i) => (
+          <li><span class="hiw-n">{String(i + 1).padStart(2, "0")}</span><div><h3>{t}</h3><p>{d}</p></div></li>
+        ))}
+      </ol>
+      <a class="btn btn--secondary" href={url("/")}>Browse the Lot</a>
+    </section>
+  </div>
+
+  <div class="hiw-cols hiw-cols--wide">
+    <section class="card hiw-col" aria-labelledby="h-review">
+      <h2 class="section-title" id="h-review">What We Check</h2>
+      <p class="muted">Every listing needs these before it can go live. Then a person judges the rest: is it an enthusiast car, are the photos honest, does the price make sense.</p>
+      <ul class="hiw-checks">
+        {checks.map((c) => <li>{c}</li>)}
+      </ul>
+    </section>
+    <aside class="trust hiw-safe" aria-labelledby="h-safe">
+      <p class="trust__title" id="h-safe">Buy Safely</p>
+      <p>Never wire money, buy gift cards or pay a shipping agent. See the car and the title in person before you pay.</p>
+      <p>Messages that ask for any of these are flagged to our team.</p>
+    </aside>
+  </div>
+
+  <section class="hiw-faq" aria-labelledby="h-faq">
+    <h2 class="section-title" id="h-faq">Questions</h2>
+    <div class="hiw-faq__grid">
+      {faq.map(([qn, a]) => (
+        <div class="card hiw-q"><h3>{qn}</h3><p>{a}</p></div>
+      ))}
+    </div>
+    <p class="muted">Something else? <a href={contact}>Contact our team</a>.</p>
+  </section>
+</Base>
+
+<style>
+  .hiw-hero {
+    max-width: 720px;
+    margin-bottom: 28px;
+  }
+  .hiw-cols {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+    margin-bottom: 24px;
+  }
+  .hiw-cols--wide {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    align-items: start;
+  }
+  .hiw-col {
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .hiw-col .label {
+    margin: 0 0 6px;
+  }
+  .hiw-col .section-title {
+    margin-top: 0;
+  }
+  .hiw-steps {
+    list-style: none;
+    margin: 4px 0 24px;
+    padding: 0;
+    display: grid;
+    gap: 0;
+    width: 100%;
+  }
+  .hiw-steps li {
+    display: grid;
+    grid-template-columns: 44px 1fr;
+    gap: 8px;
+    padding: 16px 0;
+    border-top: 1px solid var(--hair);
+  }
+  .hiw-steps h3 {
+    margin: 0 0 4px;
+    font-size: 17px;
+  }
+  .hiw-steps p {
+    margin: 0;
+    color: var(--muted);
+  }
+  .hiw-n {
+    font-family: var(--font-label);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--red);
+    padding-top: 2px;
+  }
+  .hiw-col .btn {
+    margin-top: auto;
+  }
+  .hiw-checks {
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+    columns: 2;
+    column-gap: 28px;
+  }
+  .hiw-checks li {
+    break-inside: avoid;
+    position: relative;
+    padding: 10px 0 10px 24px;
+    border-top: 1px solid var(--hair);
+  }
+  .hiw-checks li::before {
+    content: "";
+    position: absolute;
+    left: 2px;
+    top: 16px;
+    width: 10px;
+    height: 5px;
+    border-left: 2px solid var(--ok);
+    border-bottom: 2px solid var(--ok);
+    transform: rotate(-45deg);
+  }
+  .hiw-safe {
+    margin: 0;
+  }
+  .hiw-faq {
+    margin-top: 12px;
+  }
+  .hiw-faq__grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-bottom: 16px;
+  }
+  .hiw-q {
+    padding: 22px 24px;
+  }
+  .hiw-q h3 {
+    margin: 0 0 6px;
+    font-size: 17px;
+  }
+  .hiw-q p {
+    margin: 0;
+    color: var(--muted);
+  }
+  @media (max-width: 900px) {
+    .hiw-cols,
+    .hiw-cols--wide,
+    .hiw-faq__grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  @media (max-width: 560px) {
+    .hiw-checks {
+      columns: 1;
+    }
+    .hiw-col {
+      padding: 22px;
+    }
+  }
+</style>

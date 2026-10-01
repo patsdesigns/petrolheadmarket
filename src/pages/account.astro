@@ -2,12 +2,13 @@
 import { z } from "zod";
 import { eq } from "drizzle-orm";
 import Base from "../layouts/Base.astro";
+import Crumbs from "../components/Crumbs.astro";
 import Field from "../components/Field.astro";
 import Notice from "../components/Notice.astro";
 import { getDb } from "../db/client";
 import { profiles } from "../db/schema";
 import { displayNameField } from "../lib/profile";
-import { url } from "../lib/paths";
+import { url, GARAGE } from "../lib/paths";
 import { emailField, parseForm, passwordField } from "../lib/forms";
 import { callAuth, friendlyAuthError, redirectWithCookies } from "../lib/auth-call";
 import { canTransact, emailConfigured } from "../lib/config";
@@ -116,6 +117,7 @@ const notifyChecked = values.displayName !== undefined ? values.emailNotificatio
 ---
 
 <Base title="Account Settings">
+  <Crumbs items={[{ label: "My Garage", href: url(GARAGE) }, { label: "Account Settings" }]} />
   <div class="page-head">
     <div>
       <h1 class="page-title">Account Settings</h1>

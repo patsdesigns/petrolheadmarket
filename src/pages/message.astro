@@ -1,9 +1,11 @@
 ---
 import Base from "../layouts/Base.astro";
+import Crumbs from "../components/Crumbs.astro";
 import Notice from "../components/Notice.astro";
 import CarSummary from "../components/CarSummary.astro";
 import SafetyNote from "../components/SafetyNote.astro";
-import { url } from "../lib/paths";
+import { url, carUrl } from "../lib/paths";
+import { listingTitle } from "../lib/listing-rules";
 import { getPublicListing, isAppSlug, slugFromReferer, validSlug } from "../lib/public-listing";
 import NotOnApp from "../components/NotOnApp.astro";
 import { getThreadFor, sendMessage, MAX_MESSAGE } from "../lib/messaging";
@@ -63,7 +65,7 @@ if (found && Astro.request.method === "POST") {
     <NotOnApp reason={notOpen ?? "missing"} slug={slug} action="message" />
   ) : (
   <>
-  <a class="back" href={url("/inbox")}>← Inbox</a>
+  <Crumbs items={[{ label: "The Lot", href: url("/") }, { label: listingTitle(found.listing), href: carUrl(found.listing.slug!) }, { label: "Message the Seller" }]} />
   <h1 class="page-title">Message the Seller</h1>
   <div class="split">
   <CarSummary {...found} size="large" />

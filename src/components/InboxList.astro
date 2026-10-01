@@ -62,10 +62,10 @@ const when = (d: Date) => {
     transition: background-color 0.15s ease;
   }
   .inbox-row:hover {
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(var(--hi-rgb), 0.5);
   }
   .inbox-row.is-active {
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(var(--hi-rgb), 0.8);
     box-shadow: inset 3px 0 0 var(--red);
   }
   .inbox-row.is-unread .inbox-row__preview {

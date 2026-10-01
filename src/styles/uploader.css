@@ -4,9 +4,9 @@
   gap: 8px;
   padding: 24px 16px;
   text-align: center;
-  border: 1.5px dashed rgba(21, 23, 27, 0.2);
+  border: 1.5px dashed rgba(var(--ink-rgb), 0.2);
   border-radius: var(--radius-card);
-  background: rgba(255, 255, 255, 0.45);
+  background: rgba(var(--hi-rgb), 0.45);
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 .pu__drop.is-active {
@@ -72,7 +72,7 @@
   width: 120px;
   height: 6px;
   border-radius: 999px;
-  background: rgba(21, 23, 27, 0.1);
+  background: rgba(var(--ink-rgb), 0.1);
   overflow: hidden;
 }
 .pu__bar span {
@@ -104,7 +104,7 @@
   border-radius: 12px;
   overflow: hidden;
   background: var(--stripes);
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(var(--hi-rgb), 0.7);
   box-shadow: 0 1px 2px rgba(21, 23, 27, 0.06), 0 6px 16px rgba(21, 23, 27, 0.06);
 }
 .pu__tile:first-child {
@@ -157,7 +157,7 @@
   place-items: center;
   border: 0;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.9);
+  background: rgba(var(--hi-rgb), 0.9);
   -webkit-backdrop-filter: blur(8px);
   backdrop-filter: blur(8px);
   color: var(--ink);
@@ -177,7 +177,7 @@
   border: 1px solid var(--line);
   border-radius: var(--radius-btn);
   padding: 0 14px;
-  background: rgba(255, 255, 255, 0.55);
+  background: rgba(var(--hi-rgb), 0.55);
 }
 .pu__shots summary {
   min-height: var(--tap);
