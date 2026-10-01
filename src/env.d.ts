@@ -17,6 +17,18 @@ declare namespace Cloudflare {
     PUBLIC_SITE_URL?: string;
     /** Local tests only: point the Resend client at a fake API. */
     RESEND_API_BASE?: string;
+    /** Stripe secret key (sk_live_... or sk_test_...). Turns card payments on. */
+    STRIPE_SECRET_KEY?: string;
+    /** Signing secret of the Stripe webhook endpoint (whsec_...). */
+    STRIPE_WEBHOOK_SECRET?: string;
+    /** Listing fee in cents (default 10000, $100). */
+    LISTING_FEE_CENTS?: string;
+    /** Free launch spots for the whole site (default 150). */
+    FREE_LAUNCH_SPOTS?: string;
+    /** Free launch spots per seller (default 2). */
+    FREE_PER_SELLER?: string;
+    /** Local tests only: point the Stripe client at a fake API. */
+    STRIPE_API_BASE?: string;
   }
 }
 

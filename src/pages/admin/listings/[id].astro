@@ -24,6 +24,7 @@ import { STATUS_LABELS } from "../../../lib/listing-options";
 import { checklist, listingTitle, parseStep, type ListingField } from "../../../lib/listing-rules";
 import { getPhotos, photoView } from "../../../lib/listings";
 import { IN_CMS_STATUSES, publishListing, type PublishResult } from "../../../lib/cms";
+import { afterApproval, feeText, launchStatus, paymentsConfigured, waiveFee } from "../../../lib/fees";
 import { takeDownListing } from "../../../lib/take-down";
 import { audit, auditFor } from "../../../lib/audit";
 import { notifySellerChanges, notifySellerRejected } from "../../../lib/notify";
@@ -46,7 +47,7 @@ const selfUrl = url(`/admin/listings/${id}`);
 // Approving publishes at once, so `approved` is only a brief in-between
 // state. A listing left there (a publish that failed) can still be
 // published, sent back, rejected or moved back to review.
-const isApproved = () => eq(listings.status, "approved");
+const isApproved = () => or(eq(listings.status, "approved"), eq(listings.status, "awaiting_payment"));
 const publishRedirect = (r: PublishResult) =>
   Astro.redirect(`${selfUrl}?${r.ok ? "published=1" : "publish_failed=1"}`, 303);
 
@@ -101,12 +102,18 @@ if (Astro.request.method === "POST") {
       // A double click: the first request decided it and is publishing.
       if (!won) return Astro.redirect(selfUrl, 303);
       await audit(admin.id, "approve", "listing", id, notes ? { notes } : undefined);
-      // publishListing emails the seller when it goes live.
-      return publishRedirect(await publishListing(id, admin.id));
+      // Free (a launch spot) goes live at once and publishListing emails the
+      // seller; otherwise the seller is asked to pay the fee.
+      const outcome = await afterApproval(listing, admin.id);
+      if (outcome.kind === "awaiting_payment") return Astro.redirect(`${selfUrl}?awaiting=1`, 303);
+      return publishRedirect(outcome);
     }
   } else if (intent === "publish") {
     if (listing.status !== "approved") actionError = "Only approved listings can be published.";
     else return publishRedirect(await publishListing(id, admin.id));
+  } else if (intent === "waive") {
+    if (listing.status !== "awaiting_payment") actionError = "Only listings waiting for payment can be published without it.";
+    else return publishRedirect(await waiveFee(id, admin.id));
   } else if (intent === "unapprove") {
     const moved = await db
       .update(listings)
@@ -187,7 +194,8 @@ const v = (field: ListingField | "sellerType"): string => {
 const on = (field: keyof Listing) =>
   posted && posted.intent === "save" ? posted[field] === "on" : Boolean(listing![field]);
 const params = Astro.url.searchParams;
-const reopenable = listing.status === "approved";
+const reopenable = listing.status === "approved" || listing.status === "awaiting_payment";
+const launch = await launchStatus(listing.userId);
 const canDecide = listing.status === "submitted" || reopenable;
 const onTheLot = ON_THE_LOT.includes(listing.status);
 // Stops a double click sending a form twice (the server guards too).
@@ -215,6 +223,12 @@ const fmtDate = (d: Date | null | undefined) =>
     <Notice tone="error"><p>Approved, but it could not go live. The error is below. Use Publish now to try again, or move it back to review.</p></Notice>
   )}
   {params.get("reopened") && <Notice tone="ok"><p>Moved back to review.</p></Notice>}
+  {params.get("awaiting") && listing.status === "awaiting_payment" && (
+    <Notice tone="ok"><p>
+      Approved. No free launch spot was left for this seller, so it goes live when they pay the {feeText()} listing fee.{" "}
+      {emailConfigured() ? "The seller was emailed." : "Email is not set up, so the seller sees it in My Garage."}
+    </p></Notice>
+  )}
   {params.get("taken_down") && (
     <Notice tone="ok"><p>
       Taken down. It is off the Lot now and open offers were closed.{" "}
@@ -354,6 +368,20 @@ const fmtDate = (d: Date | null | undefined) =>
           )
         }
         {
+          listing.status === "awaiting_payment" && (
+            <>
+              <Notice tone={paymentsConfigured() ? "info" : "error"}>
+                <p><strong>Approved, waiting for payment.</strong> It goes live as soon as the seller pays the {feeText()} listing fee.</p>
+                {!paymentsConfigured() && <p>Card payments are not set up yet (no Stripe key), so the seller cannot pay. Set up Stripe, or publish it without payment.</p>}
+              </Notice>
+              <form method="post" onsubmit="return !this.dataset.sent && confirm('Publish this car without the listing fee?') && !!(this.dataset.sent = '1')">
+                <input type="hidden" name="intent" value="waive" />
+                <button class="btn" type="submit">Publish without payment</button>
+              </form>
+            </>
+          )
+        }
+        {
           reopenable && (
             <form method="post" onsubmit={onceOnly}>
               <input type="hidden" name="intent" value="unapprove" />
@@ -373,7 +401,7 @@ const fmtDate = (d: Date | null | undefined) =>
               <div class="buttons">
                 {listing.status === "submitted" && (
                   <button class="btn" type="submit" name="intent" value="approve" disabled={issues.length > 0}>
-                    Approve and publish
+                    {launch.sellerLeft ? "Approve and publish" : "Approve"}
                   </button>
                 )}
                 <button class="btn btn--secondary" type="submit" name="intent" value="changes">Request changes</button>
@@ -391,11 +419,20 @@ const fmtDate = (d: Date | null | undefined) =>
               <button class="btn btn--secondary reject block" type="submit" name="intent" value="takedown">Take down</button>
             </form>
           ) : (
-            listing.status !== "approved" && <p class="muted">No decision needed. This listing is {STATUS_LABELS[listing.status]?.toLowerCase() ?? listing.status}.</p>
+            !reopenable && <p class="muted">No decision needed. This listing is {STATUS_LABELS[listing.status]?.toLowerCase() ?? listing.status}.</p>
           )
         }
         {listing.slug && onTheLot && (
           <p><a href={carUrl(listing.slug)}>View on the Lot</a></p>
+        )}
+        {listing.status === "submitted" && (
+          <p class="muted fee-line">
+            {launch.sellerLeft
+              ? `Free launch listing: ${launch.left} of ${launch.total} free spots left, and this seller has ${launch.sellerLeft} of ${launch.perSeller}.`
+              : launch.left
+                ? `This seller used their ${launch.perSeller} free launch listings, so approving asks them to pay the ${feeText()} fee.`
+                : `The free launch spots are used up, so approving asks the seller to pay the ${feeText()} fee.`}
+          </p>
         )}
       </section>
 

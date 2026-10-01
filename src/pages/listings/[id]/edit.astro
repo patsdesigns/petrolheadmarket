@@ -40,6 +40,7 @@ import {
 import { getOwnListing, getPhotos, isEditable, photoView, saveListingFields } from "../../../lib/listings";
 import { notifyAdminsSubmitted } from "../../../lib/notify";
 import { resolveCarPicks } from "../../../lib/car-catalog";
+import { feeLine, launchStatus } from "../../../lib/fees";
 
 const user = Astro.locals.user!;
 const profile = Astro.locals.profile!;
@@ -136,6 +137,7 @@ const v = (field: ListingField): string => {
 const checked = (field: ListingField) => (posted && posted.step === step.key ? posted[field] === "on" : Boolean(listing![field as keyof typeof listing]));
 const title = listingTitle(listing);
 const isChanges = listing.status === "changes_requested";
+const feeNote = step.key === "review" ? feeLine(await launchStatus(listing.userId)) : null;
 const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))}`;
 ---
 
@@ -403,6 +405,7 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
           <li>Once approved it goes live and buyers can message you or make offers.</li>
         </ol>
       )}
+      {step.key === "review" && feeNote && <p class="fee-note">{feeNote}</p>}
     </section>
     {step.key !== "review" && issues.length > 0 && (
       <section class="card help">
@@ -873,5 +876,14 @@ const loginHref = `${url("/login")}?next=${encodeURIComponent(stepUrl(step.key))
   .small {
     font-size: 14px;
     margin-top: 12px;
+  }
+  .fee-note {
+    margin: 12px 0 0;
+    padding: 10px 12px;
+    border-radius: 10px;
+    background: var(--ok-bg);
+    color: var(--ok);
+    font-size: 14px;
+    font-weight: 600;
   }
 </style>

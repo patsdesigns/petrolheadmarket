@@ -128,7 +128,7 @@ export async function takeDownListing(
 }
 
 /** Statuses a seller can delete: drafts, and listings that are off the site for good. */
-export const DELETABLE_STATUSES: ListingStatus[] = ["draft", "rejected", "withdrawn"];
+export const DELETABLE_STATUSES: ListingStatus[] = ["draft", "rejected", "withdrawn", "awaiting_payment"];
 
 export type DeleteResult = { ok: true; was: ListingStatus; kept: boolean } | { ok: false; error: string };
 

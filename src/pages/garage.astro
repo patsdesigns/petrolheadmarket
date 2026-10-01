@@ -11,6 +11,7 @@ import { offersNeedingResponse } from "../lib/offers";
 
 const user = Astro.locals.user!;
 const mine = await listForUser(user.id);
+const toPay = mine.filter((l) => l.status === "awaiting_payment");
 const notice = Astro.url.searchParams.get("notice");
 const needResponse = await offersNeedingResponse(user.id);
 const unread = Astro.locals.unread;
@@ -52,6 +53,21 @@ const liveCount = mine.filter((l) => l.status === "live" || l.status === "offer_
       </Notice>
     )
   }
+  {toPay.length > 0 && (
+    <Notice tone="ok">
+      <p>
+        {toPay.length === 1 ? "Your car was approved." : `${toPay.length} of your cars were approved.`} Pay the listing fee to put{" "}
+        {toPay.length === 1 ? "it" : "them"} on the Lot:{" "}
+        {toPay.map((l, i) => (
+          <>
+            {i > 0 && ", "}
+            <a href={url(`/listings/${l.id}`)}>{listingTitle(l)}</a>
+          </>
+        ))}
+        .
+      </p>
+    </Notice>
+  )}
   {notice === "deleted" && <Notice tone="ok"><p>Draft deleted.</p></Notice>}
   {notice === "deleted-listing" && <Notice tone="ok"><p>Listing deleted, with its photos.</p></Notice>}
   {notice === "deleted-kept" && (

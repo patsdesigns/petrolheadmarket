@@ -42,6 +42,19 @@ export async function notifySellerLive(seller: Seller, listingId: string, title:
   }).catch((err) => console.error("[notify] live email failed", listingId, safeError(err)));
 }
 
+/** Approved, but the free launch spots are used up: pay the fee to publish. */
+export async function notifySellerPay(seller: Seller, listingId: string, title: string, fee: string) {
+  await sendEmail({
+    to: seller.email,
+    subject: `Your ${title} is approved`,
+    paragraphs: [
+      `Good news, ${seller.name}. Your ${title} passed review.`,
+      `Pay the ${fee} listing fee and it goes live on ${SITE_NAME} straight away. The fee covers the listing until the car sells.`,
+    ],
+    action: { label: "Pay and publish", url: absoluteUrl(url(`/listings/${listingId}`)) },
+  }).catch((err) => console.error("[notify] pay email failed", listingId, safeError(err)));
+}
+
 export async function notifySellerChanges(seller: Seller, listingId: string, title: string, notes: string) {
   await sendEmail({
     to: seller.email,

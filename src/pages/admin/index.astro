@@ -1,5 +1,5 @@
 ---
-import { asc, desc, eq, inArray, count } from "drizzle-orm";
+import { asc, desc, eq, inArray, count, sql } from "drizzle-orm";
 import Base from "../../layouts/Base.astro";
 import AdminNav from "../../components/AdminNav.astro";
 import StatusBadge from "../../components/StatusBadge.astro";
@@ -11,6 +11,9 @@ import Notice from "../../components/Notice.astro";
 import { emailConfigured } from "../../lib/config";
 import { addDemoCars, demoCount, removeDemoCars } from "../../lib/demo-cars";
 import { safeError } from "../../lib/log";
+import { feeText, launchStatus, paymentsConfigured } from "../../lib/fees";
+import { payments } from "../../db/schema";
+import { env } from "cloudflare:workers";
 
 // Middleware already limits /admin to admins; check again here.
 if (Astro.locals.profile?.role !== "admin") return Astro.rewrite(url("/404"));
@@ -84,6 +87,16 @@ const demoText: Record<string, [string, "ok" | "error"]> = {
   demo_failed: ["That did not work. Nothing was changed on the Lot. Try again in a minute.", "error"],
 };
 const demos = await demoCount();
+const [launch, waiting, paid] = await Promise.all([
+  launchStatus(),
+  getDb().select({ n: count() }).from(listings).where(eq(listings.status, "awaiting_payment")).get(),
+  getDb()
+    .select({ n: count(), cents: sql<number>`coalesce(sum(${payments.amount}), 0)` })
+    .from(payments)
+    .where(eq(payments.status, "paid"))
+    .get(),
+]);
+const webhookOn = Boolean(env.STRIPE_WEBHOOK_SECRET);
 const emailNote = emailConfigured()
   ? "The seller was emailed your note."
   : "Email is not set up, so the seller was not emailed. They see your note in My Garage.";
@@ -165,6 +178,39 @@ const waited = (d: Date | null) => {
     )
   }
 
+  <section class="card fees" aria-labelledby="fees-h">
+    <h2 id="fees-h">Listing Fees</h2>
+    <div class="fees__grid">
+      <div>
+        <p class="label">Free launch spots</p>
+        <p class="fees__big">{launch.used} of {launch.total} used</p>
+        <div class="fees__bar" role="img" aria-label={`${launch.used} of ${launch.total} free spots used`}>
+          <span style={`width: ${Math.min(100, launch.total ? (launch.used / launch.total) * 100 : 100)}%`}></span>
+        </div>
+        <p class="muted small">Up to {launch.perSeller} free cars per seller. After that each car costs {feeText()}, paid after approval.</p>
+      </div>
+      <div>
+        <p class="label">Payments</p>
+        <p class="fees__big">{paid?.n ?? 0} paid, {feeText(paid?.cents ?? 0)}</p>
+        <p class="muted small">
+          {waiting?.n ? <a href={`${url("/admin/listings")}?status=awaiting_payment`}>{waiting.n} approved {waiting.n === 1 ? "car is" : "cars are"} waiting for payment</a> : "No cars waiting for payment."}
+        </p>
+      </div>
+      <div>
+        <p class="label">Stripe</p>
+        {paymentsConfigured() && webhookOn ? (
+          <p class="fees__ok">Card payments are on.</p>
+        ) : (
+          <p class="fees__off">
+            {paymentsConfigured()
+              ? "Card payments work, but the webhook secret is missing. Add STRIPE_WEBHOOK_SECRET so payments are confirmed even when a seller closes the page."
+              : "Card payments are not set up. Add STRIPE_SECRET_KEY and STRIPE_WEBHOOK_SECRET in Cloudflare (Worker, Settings, Variables and secrets). Until then, approved cars past the free spots wait, or you can publish them without payment."}
+          </p>
+        )}
+      </div>
+    </div>
+  </section>
+
   <section class="card demo" aria-labelledby="demo-h">
     <h2 id="demo-h">Demo Cars</h2>
     {
@@ -197,6 +243,51 @@ const waited = (d: Date | null) => {
 </Base>
 
 <style>
+  .fees {
+    margin-top: 40px;
+  }
+  .fees__grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 28px;
+  }
+  .fees__grid .label {
+    margin: 0 0 6px;
+  }
+  .fees__big {
+    margin: 0 0 8px;
+    font-family: var(--font-label);
+    font-size: 24px;
+    font-weight: 700;
+  }
+  .fees__bar {
+    height: 8px;
+    border-radius: 999px;
+    background: var(--badge-bg);
+    overflow: hidden;
+  }
+  .fees__bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: var(--red);
+  }
+  .fees__ok {
+    color: var(--ok);
+    font-weight: 700;
+  }
+  .fees__off {
+    color: var(--red);
+    font-weight: 600;
+  }
+  .small {
+    font-size: 14px;
+  }
+  @media (max-width: 760px) {
+    .fees__grid {
+      grid-template-columns: 1fr;
+    }
+  }
   .demo {
     margin-top: 40px;
   }

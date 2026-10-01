@@ -28,6 +28,8 @@ const PUBLIC_PREFIXES = [
 // is no longer on the Lot gets a friendly page, not a sign-up form). Only GET
 // and HEAD pass; the page itself sends signed-out visitors of a real listing to login.
 const PAGE_CHECKS_AUTH = ["/offer", "/message"];
+// Stripe posts payment events here (see src/pages/api/stripe/webhook.ts).
+const STRIPE_WEBHOOK = "/api/stripe/webhook";
 // Signed-in people are sent on from these.
 const GUEST_ONLY = ["/login", "/signup", "/forgot-password"];
 
@@ -91,7 +93,8 @@ const handle = async (context: APIContext, next: MiddlewareNext): Promise<Respon
 
   const isMutation = !["GET", "HEAD", "OPTIONS"].includes(request.method);
 
-  if (isMutation && !path.startsWith("/api/auth/") && !sameOrigin(request)) {
+  // Stripe's webhook comes from Stripe, not a browser: it is checked by its signature instead.
+  if (isMutation && !path.startsWith("/api/auth/") && path !== STRIPE_WEBHOOK && !sameOrigin(request)) {
     return new Response("Forbidden", { status: 403 });
   }
 

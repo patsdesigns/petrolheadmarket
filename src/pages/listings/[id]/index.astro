@@ -16,6 +16,7 @@ import Field from "../../../components/Field.astro";
 import Check from "../../../components/Check.astro";
 import { emailConfigured, supportEmail } from "../../../lib/config";
 import { contactHref } from "../../../lib/contact";
+import { feeText, paymentsConfigured, settleSession, startCheckout } from "../../../lib/fees";
 
 const user = Astro.locals.user!;
 const id = Astro.params.id!;
@@ -24,6 +25,16 @@ let listing = await getOwnListing(user.id, id);
 if (!listing) return Astro.rewrite(url("/404"));
 
 let quickErrors: Record<string, string> = {};
+// Back from Stripe Checkout: confirm the payment with Stripe and publish.
+let paidNotice: { ok: boolean; text: string } | null = null;
+const returnedSession = Astro.url.searchParams.get("session_id");
+if (Astro.request.method === "GET" && Astro.url.searchParams.get("paid") && returnedSession && /^cs_[A-Za-z0-9_]{1,200}$/.test(returnedSession)) {
+  const r = await settleSession(returnedSession, undefined, id);
+  paidNotice = r.ok
+    ? { ok: true, text: r.published ? "Payment received. Your car is live on the Lot." : "Payment received. Our team will finish publishing your car shortly." }
+    : { ok: false, text: r.error };
+  listing = (await getOwnListing(user.id, id))!;
+}
 let posted: Record<string, string> | null = null;
 let actionError = "";
 
@@ -42,6 +53,11 @@ if (Astro.request.method === "POST") {
     const r = intent === "sold" ? await markSold(listing) : await relist(listing);
     if (r.ok) return Astro.redirect(`${url(`/listings/${id}`)}?${intent}`, 303);
     actionError = r.error ?? "";
+  }
+  if (intent === "pay") {
+    const r = await startCheckout(listing, user.email);
+    if (r.ok) return Astro.redirect(r.url, 303);
+    actionError = r.error;
   }
   if (intent === "takedown") {
     const r = await takeDownListing(listing, user.id, { by: "seller" });
@@ -92,6 +108,9 @@ const explain: Record<string, string> = {
   submitted: `Our team is reviewing your listing. This usually takes less than a day. ${updatesLine}`,
   changes_requested: "Our reviewer asked for a few changes. Update the listing and submit it again.",
   approved: "Approved. Our team is putting it on the Lot now. Check My Garage for updates.",
+  awaiting_payment: paymentsConfigured()
+    ? `Approved. Pay the ${feeText()} listing fee and it goes live on the Lot straight away.`
+    : `Approved. It goes live once you pay the ${feeText()} listing fee. Card payments open soon, and we will let you know.`,
   live: `Your listing is live on ${SITE_NAME}.`,
   offer_accepted: "You accepted an offer. Mark it as sold when the deal is done.",
   sold: "Sold. Congratulations.",
@@ -126,6 +145,10 @@ const deleteConfirm =
   {Astro.url.searchParams.get("relist") && <Notice tone="ok"><p>Your car is back on sale.</p></Notice>}
   {Astro.url.searchParams.get("taken_down") && (
     <Notice tone="ok"><p>Taken down. It is off the Lot now and open offers were closed.</p></Notice>
+  )}
+  {paidNotice && <Notice tone={paidNotice.ok ? "ok" : "error"}><p>{paidNotice.text}</p></Notice>}
+  {Astro.url.searchParams.get("pay") === "cancelled" && listing.status === "awaiting_payment" && (
+    <Notice tone="info"><p>Payment cancelled. Nothing was charged. Your car stays approved until you are ready.</p></Notice>
   )}
   {actionError && <Notice tone="error"><p>{actionError}</p></Notice>}
 
@@ -212,6 +235,13 @@ const deleteConfirm =
 
         {(listing.status === "rejected" || listing.status === "withdrawn") && (
           <a class="btn btn--secondary block" href={url("/sell")}>Start a new listing</a>
+        )}
+        {listing.status === "awaiting_payment" && paymentsConfigured() && (
+          <form method="post" onsubmit="return !this.dataset.sent && !!(this.dataset.sent = '1')">
+            <input type="hidden" name="intent" value="pay" />
+            <button class="btn block" type="submit">Pay {feeText()} and publish</button>
+            <p class="muted small pay-note">Secure card payment by Stripe. Your card details never reach us.</p>
+          </form>
         )}
         {isEditable(listing) && <a class="btn block" href={editUrl}>{listing.status === "draft" ? "Continue editing" : "Make changes"}</a>}
         {publicUrl && <a class="btn btn--secondary block" href={publicUrl}>View public listing</a>}

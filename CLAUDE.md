@@ -17,7 +17,7 @@ This repo is the whole site: the Lot (home page, search and filters), the car pa
 - **Email:** Resend
 - **Validation:** Zod on every server input
 - **Styling:** plain CSS with CSS custom properties (tokens below). No UI kit.
-- **Payments:** none yet. Listing is free for now. Keep the data model ready for a listing fee later (see Lifecycle).
+- **Payments:** Stripe Checkout for the listing fee (see Listing fee). Stripe hosts the card form, so card details never reach the app.
 
 ## Cloudflare rules
 
@@ -102,6 +102,19 @@ This repo is the whole site: the Lot (home page, search and filters), the car pa
 - Sellers ask for changes beyond the quick edits (and ask about rejections) through `contactHref()` on `/listings/:id`: a mailto to `SUPPORT_EMAIL` when set, otherwise the Contact the Team form with the listing attached. Never by "replying to an email". Without `SUPPORT_EMAIL` every page still has a working contact route (the form).
 - Admin notices after Approve and Take down only promise the seller an email when `emailConfigured()`; otherwise they say the seller sees it in My Garage or on their listing page.
 
+## Listing fee (decided October 2026)
+
+- Sellers submit for free. When an admin approves a car (`afterApproval()` in `src/lib/fees.ts`) it either goes live free or waits in `awaiting_payment` until the seller pays the fee: `LISTING_FEE_CENTS`, default 10000 ($100), shown with `feeText()`.
+- Free launch spots: the first `FREE_LAUNCH_SPOTS` cars published (default 150), at most `FREE_PER_SELLER` per seller (default 2). A spot is taken at approval in one `INSERT ... SELECT ... WHERE` statement (`claimSpot()`), so two approvals at once can't oversell. Spots live in `launch_spots` (no foreign key) and stay used when the car is later withdrawn or deleted. Demo cars, a listing that already holds a spot and a listing already paid for are free without taking a spot.
+- Seller copy: `feeLine()` on `/sell` and the wizard's Review and Submit step ("Launch offer: listing is free for the first 150 cars ..." or "Listing costs $100, paid only after your car is approved. If it is not accepted, you pay nothing."), and How It Works. An approved car waiting for payment shows "Approved, pay to publish" (status label), a My Garage notice, an email (`notifySellerPay`, when email is on) and a "Pay $100 and publish" button on `/listings/:id` (`intent=pay`). The seller can also delete it instead.
+- Pay: `startCheckout()` creates a Stripe Checkout Session (`mode=payment`, one line item "Listing fee: {car}", `client_reference_id` and `metadata[listing_id]`, `metadata[user_id]`, the seller's email, success URL `/listings/:id?paid=1&session_id={CHECKOUT_SESSION_ID}`, cancel URL `?pay=cancelled`), stores a `payments` row (`pending`) and redirects to Stripe.
+- Settle: `settleSession()` runs from the webhook (`POST /api/stripe/webhook`, `checkout.session.completed` and `async_payment_succeeded`; `expired` marks the row expired) and when the seller comes back (it asks Stripe for the session, and only accepts a session that belongs to that listing). It needs `payment_status: paid`, the right listing and at least the stored amount, marks the row `paid` once (conditional update, audited `fee_paid`), moves the listing `awaiting_payment` to `approved` and publishes it. Safe to run twice. Paid for a listing that moved on (waived, deleted, back to review) is audited `fee_paid_not_published`: refund it in the Stripe dashboard.
+- The webhook is checked by its `Stripe-Signature` (HMAC SHA-256 of `t.body` with `STRIPE_WEBHOOK_SECRET`, 5 minute tolerance, constant-time compare). It is the one POST the middleware's origin check skips. Unknown sessions get 200 so Stripe stops retrying.
+- Without `STRIPE_SECRET_KEY` card payments are off: approved cars past the free spots still wait, the seller is told payments open soon, and the admin can use "Publish without payment" (`waiveFee()`, audited `fee_waived`) on the review screen, which is there for any car waiting for payment. An admin can also move a waiting car back to review, request changes or reject it.
+- `/admin` has a Listing Fees card: free spots used (with a bar), paid count and total, cars waiting for payment (links to `/admin/listings?status=awaiting_payment`) and whether Stripe and its webhook are set up. The review screen says before approving whether the car takes a free spot or will ask the seller to pay ("Approve and publish" or "Approve").
+- Refunds are made in the Stripe dashboard; the app does not refund. Suspending a seller withdraws their cars waiting for payment too.
+- Stripe setup: in the Stripe dashboard create a webhook endpoint `{PUBLIC_SITE_URL}/api/stripe/webhook` for `checkout.session.completed`, `checkout.session.async_payment_succeeded` and `checkout.session.expired`, then set `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` as secrets. `STRIPE_API_BASE` exists only to point tests at a fake Stripe. Never set it in Cloudflare.
+
 ## The Lot and car pages (decided when the site moved off Webflow)
 
 - Speed: the middleware runs its per-request queries (profile, unread count, admin counts) in parallel, and pages read what they need with `Promise.all` where the queries do not depend on each other. `Base.astro` has a `speculationrules` script that prefetches a same-site page when the pointer rests on its link (`eagerness: moderate`), never `/logout`, `/api/*`, `/photos/*` or `/inbox/*` (opening a thread marks it read); a link can opt out with `data-no-prefetch`. Page changes cross-fade with cross-document view transitions (`@view-transition` in `global.css`, off under reduced motion).
@@ -131,6 +144,11 @@ Set in the Cloudflare dashboard (Worker, Settings, Variables and secrets).
 | `ADMIN_EMAILS` | no | Comma separated emails that get the admin role once the address is confirmed (synced on every request) |
 | `SUPPORT_EMAIL` | no | Public contact address for mailto links and email reply_to. Use a shared inbox, not an `ADMIN_EMAILS` sign in address. Without it, contact links go to the Contact the Team form (`/contact`). |
 | `SIGNUP_HOURLY_MAX` | no | Optional. Sign ups allowed per hour for the whole site, default 30. |
+| `STRIPE_SECRET_KEY` | yes | Stripe secret key. Its presence switches card payments on (`paymentsConfigured()`). |
+| `STRIPE_WEBHOOK_SECRET` | yes | Signing secret of the Stripe webhook endpoint (`whsec_...`). |
+| `LISTING_FEE_CENTS` | no | Optional. Listing fee in cents, default 10000 ($100). |
+| `FREE_LAUNCH_SPOTS` | no | Optional. Free launch listings for the whole site, default 150. |
+| `FREE_PER_SELLER` | no | Optional. Free launch listings per seller, default 2. |
 | `PUBLIC_SITE_URL` | no | The address people use (the workers.dev address, later the custom domain). Also the auth base URL, so it must match. |
 
 ## Screens
@@ -145,7 +163,7 @@ Set in the Cloudflare dashboard (Worker, Settings, Variables and secrets).
 - `/garage` : My Garage (dashboard). Listings with status, offers needing a response, unread messages.
 - `/saved` : Saved Cars (the hearts), newest saved first
 - `/sell` : New listing wizard. Autosaves as a draft. Steps: The car, Condition and history, Photos, Price and contact, Review and submit.
-- `/listings/:id` : Seller view of one listing (status, reviewer notes, quick edits, mark sold, take down, delete when draft, rejected or withdrawn)
+- `/listings/:id` : Seller view of one listing (status, reviewer notes, quick edits, mark sold, take down, Pay and publish when approved and waiting for payment, delete when draft, rejected, withdrawn or waiting for payment)
 - `/listings/:id/edit` : Edit a draft or a listing with changes requested
 - `/offer?listing={slug}` : Make an offer (shows the car summary and asking price)
 - `/offers` : Offers sent and received
@@ -155,7 +173,7 @@ Set in the Cloudflare dashboard (Worker, Settings, Variables and secrets).
 - `/account` : Display name, phone, email, password, notification settings
 
 **Admin (role admin only)**
-- `/admin` : Review queue, oldest submitted first, and the Demo cars card (add or remove the 25 demo cars)
+- `/admin` : Review queue, oldest submitted first, the Listing Fees card, and the Demo cars card (add or remove the 25 demo cars)
 - `/admin/listings/:id` : Full review screen with the checklist, photo grid, inline edit, notes to seller, and three actions: Approve and publish, Request changes, Reject. Listings on the Lot add Take down
 - `/admin/listings` : Every listing, newest change first, 50 per page, filter by status, search by car, slug, pasted public link, seller name, email or id
 - `/admin/users` : Search accounts by email or name; shows confirmed, admin, suspended and listing counts; actions Mark email as confirmed, Suspend, Unsuspend
@@ -169,6 +187,7 @@ Set in the Cloudflare dashboard (Worker, Settings, Variables and secrets).
 - `GET /photos/{key}` : Public photo serving from R2
 - `GET /api/search?q=` : the header's live search (public)
 - `POST /api/saved` : save or unsave a car (signed in)
+- `POST /api/stripe/webhook` : Stripe payment events (checked by signature)
 - Everything else as needed by the screens
 
 **Old addresses**
@@ -178,9 +197,9 @@ Set in the Cloudflare dashboard (Worker, Settings, Variables and secrets).
 
 Statuses in the app database:
 
-`draft` → `submitted` → `changes_requested` (back to seller) → `submitted` → `approved` → `live` → `offer_accepted` → `sold`
+`draft` → `submitted` → `changes_requested` (back to seller) → `submitted` → `approved` → (`awaiting_payment` when no free launch spot is left) → `live` → `offer_accepted` → `sold`
 
-Also: `rejected`, `withdrawn`. Reserve `awaiting_payment` between `draft` and `submitted` for the future listing fee, but do not use it yet.
+Also: `rejected`, `withdrawn`. `awaiting_payment` is an approved car waiting for its listing fee (see Listing fee).
 
 - Only `live` and `offer_accepted` listings are on the Lot; `live`, `offer_accepted` and `sold` have a car page.
 - `approved` is a brief in-between state: Approve publishes at once (see Review and publishing).
@@ -241,6 +260,8 @@ Better Auth's own tables, plus:
 - `listings`: id, user_id, status, every listing field above, slug, cms_item_id, publishing_at, cms_sync_pending and cms_attempted_at (legacy, unused), deleted_at (soft delete by the seller), review_notes, reviewer_id, submitted_at, reviewed_at, published_at, sold_at, created_at, updated_at
 - `job_runs`: name, ran_at (legacy, from the Webflow CMS retry; unused)
 - `saved_cars`: user_id, listing_id, created_at (primary key user and listing)
+- `launch_spots`: listing_id (primary key, no foreign key), user_id, created_at. One row per car that went live free (migration 0013).
+- `payments`: id, listing_id, user_id, stripe_session_id (unique), amount (cents), currency, status (pending, paid, expired), created_at, paid_at. No foreign keys, so the record outlives the listing.
 - `contact_requests`: id, user_id (null when signed out), name, email, topic, listing_id, body, handled_at, handled_by, created_at (Contact the Team form)
 - `listing_photos`: id, listing_id, r2_key, position, width, height, created_at
 - `offers`: id, listing_id, buyer_id, amount, message, status (pending, countered, accepted, declined, expired, withdrawn, ended), parent_offer_id, flagged, flag_reason, flag_reviewed_at, expires_at, responded_at, created_at

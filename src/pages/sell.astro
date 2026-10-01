@@ -8,6 +8,7 @@ import { canTransact } from "../lib/config";
 import { createDraft, listForUser, MAX_OPEN_DRAFTS } from "../lib/listings";
 import { listingTitle } from "../lib/listing-rules";
 import { MIN_PHOTOS, MIN_DESCRIPTION } from "../lib/listing-options";
+import { feeLine, launchStatus } from "../lib/fees";
 
 const user = Astro.locals.user!;
 let error = "";
@@ -19,6 +20,7 @@ if (Astro.request.method === "POST") {
 }
 const notice = Astro.url.searchParams.get("notice");
 
+const fee = feeLine(await launchStatus(user.id));
 const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" || l.status === "changes_requested");
 ---
 
@@ -26,9 +28,10 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
   <Crumbs items={[{ label: "My Garage", href: url(GARAGE) }, { label: "Sell Your Car" }]} />
   <h1 class="page-title">Sell Your Car</h1>
   <p class="lede">
-    Listing is free. A real person reviews every car before it goes live, so buyers know they are looking at an honest
-    listing. It takes about 20 minutes, and your progress saves as you go.
+    A real person reviews every car before it goes live, so buyers know they are looking at an honest listing. It takes
+    about 20 minutes, and your progress saves as you go.
   </p>
+  <p class="fee-note">{fee}</p>
 
   {error && <Notice tone="error"><p>{error}</p></Notice>}
   {notice === "deleted" && <Notice tone="ok"><p>Draft deleted.</p></Notice>}
@@ -97,6 +100,16 @@ const drafts = (await listForUser(user.id)).filter((l) => l.status === "draft" |
 </Base>
 
 <style>
+  .fee-note {
+    display: inline-block;
+    margin: -8px 0 24px;
+    padding: 10px 16px;
+    border-radius: 12px;
+    background: var(--ok-bg);
+    color: var(--ok);
+    font-weight: 600;
+    max-width: 760px;
+  }
   .drafts {
     margin-bottom: 20px;
     max-width: 760px;

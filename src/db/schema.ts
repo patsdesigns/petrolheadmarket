@@ -30,7 +30,7 @@ export type Profile = typeof profiles.$inferSelect;
 
 export const LISTING_STATUSES = [
   "draft",
-  "awaiting_payment", // reserved for a future listing fee, not used yet
+  "awaiting_payment", // approved, waiting for the seller to pay the listing fee (see src/lib/fees.ts)
   "submitted",
   "changes_requested",
   "approved",
@@ -300,3 +300,35 @@ export const savedCars = sqliteTable(
   },
   (t) => [primaryKey({ columns: [t.userId, t.listingId] }), index("saved_cars_user_idx").on(t.userId, t.createdAt)],
 );
+
+// Free launch spots (src/lib/fees.ts): one row per listing that went live
+// free. Kept when the listing is deleted, so a spot is never handed out twice.
+export const launchSpots = sqliteTable(
+  "launch_spots",
+  {
+    listingId: text("listing_id").primaryKey(),
+    userId: text("user_id").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+  },
+  (t) => [index("launch_spots_user_idx").on(t.userId)],
+);
+
+// Listing fee payments through Stripe Checkout (src/lib/fees.ts). One row
+// per checkout session. No foreign keys: the record outlives the listing.
+export const payments = sqliteTable(
+  "payments",
+  {
+    id: text("id").primaryKey(),
+    listingId: text("listing_id").notNull(),
+    userId: text("user_id").notNull(),
+    stripeSessionId: text("stripe_session_id").notNull(),
+    amount: integer("amount").notNull(),
+    currency: text("currency").notNull().default("usd"),
+    status: text("status", { enum: ["pending", "paid", "expired"] }).notNull().default("pending"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull().default(now),
+    paidAt: integer("paid_at", { mode: "timestamp_ms" }),
+  },
+  (t) => [uniqueIndex("payments_session_uq").on(t.stripeSessionId), index("payments_listing_idx").on(t.listingId, t.status)],
+);
+
+export type Payment = typeof payments.$inferSelect;

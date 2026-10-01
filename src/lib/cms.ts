@@ -64,7 +64,7 @@ async function reserveSlug(listing: Listing): Promise<string> {
 
 export type PublishResult = { ok: true; slug: string } | { ok: false; error: string; busy?: boolean };
 
-async function sellerContact(userId: string) {
+export async function sellerContact(userId: string) {
   const db = getDb();
   const u = await db.select().from(users).where(eq(users.id, userId)).get();
   if (!u) return null;

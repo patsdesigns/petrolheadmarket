@@ -6,12 +6,15 @@ import { url } from "../lib/paths";
 import { contactHref } from "../lib/contact";
 import { MIN_DESCRIPTION, MIN_PHOTOS } from "../lib/listing-options";
 import { OFFER_HOURS } from "../lib/offers";
+import { feeText, launchStatus } from "../lib/fees";
+
+const launch = await launchStatus();
 
 const contact = contactHref("other", { subject: "A question" });
 
 const selling = [
   ["List your car", `Tell us about the car, add at least ${MIN_PHOTOS} photos and write its story. Your draft saves as you type, so you can finish later.`],
-  ["A person reviews it", "Someone on our team reads every listing before it goes live. If anything is missing we tell you exactly what to change."],
+  ["A person reviews it", `Someone on our team reads every listing before it goes live. If anything is missing we tell you exactly what to change. Once approved, you pay the ${feeText()} listing fee and it goes live${launch.left ? " (free for our first launch sellers)" : ""}.`],
   ["Buyers make offers", `Set a fixed price and choose whether to take offers. You can accept, counter or decline, and offers expire after ${OFFER_HOURS} hours.`],
   ["Agree the deal", "Accept an offer and you both get each other's contact details. Meet, inspect, sign the title, done."],
 ];
@@ -30,7 +33,12 @@ const checks = [
   "Known issues, written down honestly",
 ];
 const faq = [
-  ["Does it cost anything?", "Listing is free for now, and buying never costs anything here."],
+  [
+    "Does it cost anything?",
+    launch.left
+      ? `Listing is free for the first ${launch.total} cars, up to ${launch.perSeller} per seller, and ${launch.left} free spots are left. After that it is ${feeText()} per car, paid only once your car is approved. Buying never costs anything here.`
+      : `Listing costs ${feeText()} per car, paid only once your car is approved, so you never pay for a car we do not accept. Buying never costs anything here.`,
+  ],
   ["Are there auctions?", "No. Every car has a fixed asking price, and most sellers take offers."],
   ["What cars belong here?", "Cars people care about: sports cars, classics, track toys, wagons and trucks with character. No junk cars, no flips with hidden problems."],
   ["How do I pay?", "You pay the seller directly once you have seen the car and the title. We never ask you to wire money or pay a shipping agent."],

@@ -54,7 +54,7 @@ export function optionLabel(
 
 export const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
-  awaiting_payment: "Awaiting payment",
+  awaiting_payment: "Approved, pay to publish",
   submitted: "In review",
   changes_requested: "Changes requested",
   approved: "Approved",

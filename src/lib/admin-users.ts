@@ -9,7 +9,7 @@ import { url } from "./paths";
 import { roleFor } from "./profile";
 
 /** Listings that are on the site or on their way there. Suspending takes them down. */
-const TAKE_DOWN_STATUSES = ["submitted", "approved", "live", "offer_accepted"] as const;
+const TAKE_DOWN_STATUSES = ["submitted", "approved", "awaiting_payment", "live", "offer_accepted"] as const;
 const ON_THE_LOT = ["live", "offer_accepted"];
 const SUSPENDED_NOTE = "Taken down because the account was suspended.";
 
